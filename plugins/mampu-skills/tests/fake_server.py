@@ -31,15 +31,21 @@ GITHUB_ISSUES = [{"number": 2301, "title": "Flow designer: duplicate End nodes",
 PERMISSIONS = {"missing": ["bitable:app"], "why": "Client tracking: find the client you are working on in the client Base.",
                "url": "https://work.example.invalid/v1/work/auth/lark/grant?ticket=t1"}
 GRANT_TOKEN = "test-grant"  # a login that has not granted the newest Lark permission
+STALE_TOKEN = "test-stale"  # a login with tasks the owner should be asked about
+STALE_TASKS = [dict(TASK, guid="task-guid-002", title="Pause an ad from the report", status="waiting",
+                    last_note="Promoted to production: https://example.invalid/pr/9", stale=True),
+               dict(TASK, guid="task-guid-003", title="Mobile calendar tab", last_note=None, stale=True)]
 BLOCK = ("Task:      Collect step keeps old menu pick — found, open → marked doing\n"
          "Records:   flow-turn-handling-fix — found, reading it\n"
          "Help page: Collect steps — found, will check after the change\n"
          "Client:    none on this task")
 
 
-def routes(method, path, body, needs_grant=False):
+def routes(method, path, body, needs_grant=False, stale=False):
     """Return (status, payload) for a contract route, or None when unknown."""
     answer = _routes(method, path, body)
+    if stale and answer and answer[0] == 200 and path.rstrip("/").endswith("/open"):
+        answer = (200, {"tasks": [TASK] + STALE_TASKS})
     if needs_grant and answer and answer[0] == 200 and path.rstrip("/").split("/")[-1] in ("open", "match"):
         answer = (200, dict(answer[1], permissions=PERMISSIONS))
     return answer
@@ -108,14 +114,14 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             body = raw.decode(errors="replace")
         sent = self.headers.get("api_access_token")
-        token_ok = sent in (self.expected_token, GRANT_TOKEN)
+        token_ok = sent in (self.expected_token, GRANT_TOKEN, STALE_TOKEN)
         path = self.path.split("?", 1)[0]
         with open(self.log_path, "a") as fh:
             fh.write(json.dumps({"method": method, "path": self.path, "token_ok": token_ok, "body": body}) + "\n")
         if not token_ok:
             status, payload = 401, {"error": "not staff"}
         else:
-            answer = routes(method, path, body, needs_grant=sent == GRANT_TOKEN)
+            answer = routes(method, path, body, needs_grant=sent == GRANT_TOKEN, stale=sent == STALE_TOKEN)
             status, payload = answer if answer else (404, {"error": "no route"})
         data = json.dumps(payload).encode()
         self.send_response(status)

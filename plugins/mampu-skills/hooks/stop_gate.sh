@@ -59,9 +59,9 @@ if [ -z "$milestone" ]; then
 import json
 print(json.dumps({"decision": "block", "reason": (
     "[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
-    "team task is started. Call team_task_start with the matching task, or create one, then team_task_finish "
-    "with state done, doing or blocked, the one-line summary and the debrief; then print the close-out "
-    "status block.")}))
+    "team task is started. Without asking the person, call team_task_start with the matching task, or create "
+    "one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary "
+    "and the debrief; then print the close-out status block.")}))
 ' 2>/dev/null
     exit 0
   fi
@@ -71,9 +71,9 @@ title=$(state_get "$sid" task_title)
 python3 -c '
 import json, sys
 title = sys.argv[1]
-reason = ("[work-loop] Close-out owed for task \"%s\": call team_task_finish with state done, doing or blocked, the "
-          "one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, and the "
-          "help pages you checked; then print the close-out status block." % title)
+reason = ("[work-loop] Close-out owed for task \"%s\": call team_task_finish with state done, doing, waiting or "
+          "blocked, the one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, "
+          "and the help pages you checked; then print the close-out status block." % title)
 print(json.dumps({"decision": "block", "reason": reason}))
 ' "$title" 2>/dev/null
 exit 0

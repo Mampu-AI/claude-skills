@@ -12,18 +12,22 @@ The tools come with this plugin's `mampu-tech-team` server: `team_work_guide`, `
 
 1. **`team_task_start`** — at the first prompt that is work. Pass the `task_guid` the prompt context offered, or `create: {title, description}` when nothing matches. Never ask the person whether to start a task: start it and say so in the block.
 2. **`team_task_milestone`** — when a PR is opened or merged, or a promote runs (`kind`: pr_opened, pr_merged, promoted; the URL when known).
-3. **`team_task_finish`** — before your final reply: `state` done, doing or blocked; the one-line summary; `debrief` {how, pitfalls, findings}; `changed_paths`; `records` to write or update; `help_pages_checked` with a verdict per page — `unchanged`, `needs_update`, or `missing` with `suggested_title`, `section` and `why_public` (section `public-docs` says what is public); `pr_url` when a PR exists. A flagged page makes the server file one docs request on the help-doc repo; if you can capture real screenshots, also write the page there with that repo's own `help-doc-writing` skill and open a draft PR. Never ask the person to finish the task.
+3. **`team_task_finish`** — before your final reply: `state` done, doing, waiting or blocked; the one-line summary; `debrief` {how, pitfalls, findings}; `changed_paths`; `records` to write or update; `help_pages_checked` with a verdict per page — `unchanged`, `needs_update`, or `missing` with `suggested_title`, `section` and `why_public` (section `public-docs` says what is public); `pr_url` when a PR exists. A flagged page makes the server file one docs request on the help-doc repo; if you can capture real screenshots, also write the page there with that repo's own `help-doc-writing` skill and open a draft PR. Never ask the person to finish the task. **Done** once the work is live and checked: small leftovers (a docs offer, a cleanup, watching the first live case) go in the summary and do not keep the task open. **Waiting** = it waits on the owner or a client; the summary says who and for what. **Doing** = someone is still working on it.
 
 ## The status block
 
-Open the reply that starts work with these four lines, and close out with them again. Fixed vocabulary: found / not found / created / updated / unchanged / done / doing / blocked. The server renders the lines (`block_line`, `block`); print them, never skip them, even when all four are none.
+Open the reply that starts work with these four lines, and close out with them again. Fixed vocabulary: found / not found / created / updated / unchanged / done / doing / waiting / blocked. The server renders the lines (`block_line`, `block`); print them, never skip them, even when all four are none.
 
 ```
-Task:      <title> — found, open → marked doing | not found → created "<title>", doing | <title> — done, completed | … doing, note left | … blocked: <why>
+Task:      <title> — found, open → marked doing | not found → created "<title>", doing | <title> — done, completed | … doing, note left | … waiting: <who, for what> | … blocked: <why>
 Records:   <slug> — found, reading it | none match → will write one at close-out | <slug> — updated | <slug> — created | <slug> — unchanged
 Help page: <title> — found, will check after the change | none mention <topic> | <title> — checked, no change needed | <title> — needs update, flagged | <title> — missing, page proposed | …; docs request #<n>
 Client:    none on this task
 ```
+
+## Stale tasks
+
+Once a day the session start lists your stale tasks (shipped but still open or never noted, after three hours; or untouched for a day, three days for waiting). Before other work, show the person that numbered list and ask in one line which are done, waiting (on whom), blocked or still doing, then call `team_task_finish` for each from the answer. Never close a stale task without the owner's word.
 
 ## Not that one?
 
