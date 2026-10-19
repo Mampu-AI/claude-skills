@@ -41,8 +41,8 @@ PROMPT_CONTEXT = (
     "Server block:\n" + BLOCK)
 MILESTONE_CONTEXT = ("[work-loop] milestone %s detected. Call team_task_milestone with the URL if known; when the work is "
                      "complete, call team_task_finish.")
-STOP_REASON = ('[work-loop] Close-out owed for task "%s": call team_task_finish with state done, doing or blocked, the '
-               "one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, and the "
+STOP_REASON = ('[work-loop] Close-out owed for task "%s": call team_task_finish with state done, doing, waiting or '
+               "blocked, the one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, and the "
                "help pages you checked; then print the close-out status block.")
 START_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_start"
 FINISH_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_finish"
@@ -276,8 +276,8 @@ for name in ("save_flow", "reply_to_conversation", "create_knowledge_entry", "se
 check("change hooks made no requests", requests() == [])
 
 CHANGE_REASON = ("[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
-                 "team task is started. Call team_task_start with the matching task, or create one, then team_task_finish "
-                 "with state done, doing or blocked, the one-line summary and the debrief; then print the close-out "
+                 "team task is started. Without asking the person, call team_task_start with the matching task, or create "
+                 "one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
                  "status block.")
 rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=False))
 check("Stop after a change with no task → block: start a task and close it out",
@@ -553,6 +553,23 @@ rc, out, err, _ = run("prompt_match.sh", base("sess-gggg-0001", "UserPromptSubmi
 check("UserPromptSubmit tells the agent about the missing permission without a notice on every prompt",
       rc == 0 and context(out, "UserPromptSubmit").startswith(PROMPT_CONTEXT.split("\n")[0])
       and GRANT_URL in context(out, "UserPromptSubmit") and "systemMessage" not in json.loads(out), out)
+requests()
+
+# ---------------------------------------------------------------- stale tasks: ask the owner once a day
+stale = {"SAPOT_STAFF_TOKEN": "test-stale"}
+STALE_ASK = (" Stale, ask the owner before other work: 1. Pause an ad from the report (waiting) — last note: "
+             "Promoted to production: https://example.invalid/pr/9; 2. Mobile calendar tab (doing) — no note yet. Show "
+             "the person this numbered list and ask in one line which are done, waiting (on whom), blocked or still "
+             "doing; then call team_task_finish for each from the answer. Never close one without their word.")
+rc, out, err, _ = run("session_start.sh", base("sess-ssss-0001", "SessionStart", source="startup"), env=stale)
+check("SessionStart lists the stale tasks and tells the agent to ask the owner",
+      rc == 0 and context(out, "SessionStart").endswith(STALE_ASK)
+      and "Pause an ad from the report (waiting)" in context(out, "SessionStart").split(" Stale,")[0], out)
+check("SessionStart shows the person the stale count",
+      json.loads(out).get("systemMessage") == "Work loop: 2 of your tasks look stale; Claude will ask you about them.", out)
+rc, out, err, _ = run("session_start.sh", base("sess-ssss-0002", "SessionStart", source="startup"), env=stale)
+check("a second session the same day does not ask again",
+      rc == 0 and "Stale," not in context(out, "SessionStart") and "systemMessage" not in json.loads(out), out)
 requests()
 
 # ---------------------------------------------------------------- hygiene

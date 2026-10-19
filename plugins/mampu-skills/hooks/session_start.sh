@@ -38,11 +38,37 @@ print("[work-loop] Open for you: " + listed + ". Rule: a reply that starts work 
       "Details: the work-loop skill.")
 ' 2>/dev/null) || exit 0
 [ -n "$text" ] || exit 0
+# Stale tasks (shipped but still open, never noted, or untouched for a while): the owner is asked once a day per
+# computer, and the agent records their answer. Never closed without their word.
+stale=""
+marker="$WORK_STATE_DIR/stale-asked"
+today=$(date +%F)
+if [ "$(cat "$marker" 2>/dev/null)" != "$today" ]; then
+  stale=$(printf '%s' "$response" | python3 -c '
+import json, sys
+tasks = [t for t in (json.load(sys.stdin).get("tasks") or []) if isinstance(t, dict) and t.get("stale") and t.get("title")]
+if tasks:
+    listed = "; ".join("%d. %s (%s) — %s" % (i, t["title"], t.get("status") or "doing",
+                       "last note: " + t["last_note"] if t.get("last_note") else "no note yet")
+                       for i, t in enumerate(tasks, 1))
+    print(len(tasks))
+    print(" Stale, ask the owner before other work: " + listed + ". Show the person this numbered list and ask in one "
+          "line which are done, waiting (on whom), blocked or still doing; then call team_task_finish for each from "
+          "the answer. Never close one without their word.")
+' 2>/dev/null) || stale=""
+fi
+notices=""
+if [ -n "$stale" ]; then
+  count=$(printf '%s\n' "$stale" | head -n 1)
+  text="$text$(printf '%s\n' "$stale" | tail -n +2)"
+  notices="Work loop: $count of your tasks look stale; Claude will ask you about them."
+  mkdir -p "$WORK_STATE_DIR" 2>/dev/null && printf '%s\n' "$today" > "$marker"
+fi
 # A Lark permission the loop needs and this sign-in has not granted: the person sees why and the link.
 notice=$(printf '%s' "$response" | permission_notice) || notice=""
 if [ -n "$notice" ]; then
-  hook_context SessionStart "$text $(printf '%s' "$response" | permission_context)" "$notice"
-else
-  hook_context SessionStart "$text"
+  text="$text $(printf '%s' "$response" | permission_context)"
+  notices="${notices:+$notices }$notice"
 fi
+hook_context SessionStart "$text" "$notices"
 exit 0
