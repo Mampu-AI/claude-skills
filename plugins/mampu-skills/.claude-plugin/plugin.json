@@ -1,0 +1,8 @@
+{
+  "name": "mampu-skills",
+  "displayName": "Mampu Tech Team",
+  "description": "Tech team tools for Claude Code: the AI work loop (team tasks in Lark, internal documentation, help pages). Updates install themselves at each Claude Code start.",
+  "author": {
+    "name": "Mampu AI"
+  }
+}

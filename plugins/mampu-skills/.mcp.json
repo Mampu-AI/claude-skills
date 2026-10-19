@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mampu-tech-team": {
+      "type": "http",
+      "url": "${SAPOT_WORK_MCP_URL:-https://work.mampuai.com/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${SAPOT_STAFF_TOKEN:-}"
+      },
+      "headersHelper": "${CLAUDE_PLUGIN_ROOT}/scripts/sapot-headers.sh"
+    }
+  }
+}

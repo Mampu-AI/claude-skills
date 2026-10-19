@@ -1,0 +1,16 @@
+{
+  "name": "mampu",
+  "owner": {
+    "name": "Mampu AI"
+  },
+  "plugins": [
+    {
+      "name": "mampu-skills",
+      "source": "./plugins/mampu-skills",
+      "description": "Mampu AI tech team skills for Claude Code: the AI work loop"
+    }
+  ],
+  "metadata": {
+    "description": "Mampu AI team skills for Claude Code"
+  }
+}
