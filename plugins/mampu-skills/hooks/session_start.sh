@@ -2,6 +2,13 @@
 # SessionStart: GET work/open → inject the caller's open tasks and the one-line loop rule.
 # Silent (exit 0, no output) when there is no token or the server does not answer.
 . "$(dirname "$0")/lib/work_api.sh"
+input=$(cat)
+# Remember the project as it was when the session began, so the Stop gate sees changes made by any means.
+sid=$(printf '%s' "$input" | session_id_from_input)
+if [ -n "$sid" ] && [ -z "$(state_get "$sid" baseline)" ]; then
+  print=$(project_print "$(printf '%s' "$input" | json_get cwd)")
+  [ -n "$print" ] && state_set "$sid" baseline "\"$print\""
+fi
 if ! work_token >/dev/null 2>&1; then
   # Not connected: the person sees the notice directly, and the agent is told to ask before anything else.
   hook_context SessionStart \
