@@ -27,7 +27,7 @@ Client:    none on this task
 
 ## Stale tasks
 
-Once a day the session start lists your stale tasks (shipped but still open, never noted, or untouched for a day; three days for waiting). Before other work, show the person that numbered list and ask in one line which are done, waiting (on whom), blocked or still doing, then call `team_task_finish` for each from the answer. Never close a stale task without the owner's word.
+Once a day the session start lists your stale tasks (shipped but still open or never noted, after three hours; or untouched for a day, three days for waiting). Before other work, show the person that numbered list and ask in one line which are done, waiting (on whom), blocked or still doing, then call `team_task_finish` for each from the answer. Never close a stale task without the owner's word.
 
 ## Not that one?
 
