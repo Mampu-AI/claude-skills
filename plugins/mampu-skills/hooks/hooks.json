@@ -1,5 +1,5 @@
 {
-  "description": "AI-native work loop: surfaces the team task, records and help pages for each prompt, tracks PR/promote milestones, holds the session for its close-out, and runs the background records review.",
+  "description": "AI-native work loop: surfaces the team task, records and help pages for each prompt, tracks PR/promote milestones and changes (project files, commits, client changes in Sapot Chat), holds the session for a task and its close-out, and runs the background records review.",
   "hooks": {
     "SessionStart": [
       {
@@ -20,6 +20,12 @@
         "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/milestone.sh\"", "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash|mcp__.*sapot-flows__.*",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/change_seen.sh\"", "timeout": 10 }
         ]
       },
       {

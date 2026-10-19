@@ -225,6 +225,102 @@ rc, out, err, _ = run("stop_gate.sh", base(sid, "Stop", stop_hook_active=False))
 silent("Stop after team_task_finish passes through", rc, out, err)
 check("state-file hooks made no requests", requests() == [])
 
+# ---------------------------------------------------------------- PostToolUse changes, then Stop
+repo = WORK / "client-repo"
+(repo / "src").mkdir(parents=True)
+subprocess.run(["git", "init", "-q", str(repo)], check=True)
+loose = WORK / "loose-notes"
+loose.mkdir()
+claude_dir = Path(os.environ["HOME"]) / ".claude" / "projects" / "x" / "memory"
+claude_dir.mkdir(parents=True)
+subprocess.run(["git", "init", "-q", str(Path(os.environ["HOME"]) / ".claude")], check=True)
+
+edit_sid = "sess-cccc-0001"
+rc, out, err, _ = run("change_seen.sh", post_tool(edit_sid, "Edit", {"file_path": str(repo / "src" / "a.py")}, {}))
+silent("an edit inside a project is silent", rc, out, err)
+check("an edit inside a project → state.changed = file", (state(edit_sid) or {}).get("changed") == "file", state(edit_sid))
+write_sid = "sess-cccc-0002"
+run("change_seen.sh", post_tool(write_sid, "Write", {"file_path": str(repo / "src" / "new" / "b.md")}, {}))
+check("a new file in a new folder inside a project counts", (state(write_sid) or {}).get("changed") == "file", state(write_sid))
+skip_sid = "sess-cccc-0003"
+run("change_seen.sh", post_tool(skip_sid, "Write", {"file_path": str(loose / "scratch.txt")}, {}))
+run("change_seen.sh", post_tool(skip_sid, "Edit", {"file_path": str(claude_dir / "note.md")}, {}))
+run("change_seen.sh", post_tool(skip_sid, "NotebookEdit", {"notebook_path": "/nowhere/at/all.ipynb"}, {}))
+check("scratch files, Claude's own notes and missing folders do not count", state(skip_sid) is None, state(skip_sid))
+
+commit_sid = "sess-cccc-0004"
+run("change_seen.sh", post_tool(commit_sid, "Bash", {"command": 'echo "git commit -m x"'}, {}))
+run("change_seen.sh", post_tool(commit_sid, "Bash", {"command": "git status && git log -1"}, {}))
+check("a quoted or read-only git command does not count", state(commit_sid) is None, state(commit_sid))
+rc, out, err, _ = run("change_seen.sh", post_tool(commit_sid, "Bash", {"command": "git add -A && git commit -m 'fix the menu'"}, {}))
+silent("git commit is silent", rc, out, err)
+check("git commit → state.changed = commit", (state(commit_sid) or {}).get("changed") == "commit", state(commit_sid))
+push_sid = "sess-cccc-0005"
+run("change_seen.sh", post_tool(push_sid, "Bash", {"command": "git -C ~/work/repo push origin HEAD:feat/x"}, {}))
+check("git -C … push → changed = commit", (state(push_sid) or {}).get("changed") == "commit", state(push_sid))
+
+SAPOT = "mcp__plugin_mampu-chat_sapot-flows__"
+read_sid = "sess-cccc-0006"
+for name in ("list_accounts", "get_flow_graph", "search_contacts", "count_conversations", "filter_contacts",
+             "preview_campaign_audience", "check_graph", "test_flow", "get_knowledge_upload_link"):
+    run("change_seen.sh", post_tool(read_sid, SAPOT + name, {"account_id": 2}, {}))
+check("Sapot Chat tools that only look do not count", state(read_sid) is None, state(read_sid))
+sapot_sid = "sess-cccc-0007"
+rc, out, err, _ = run("change_seen.sh", post_tool(sapot_sid, SAPOT + "update_contact", {"account_id": 2}, {}))
+silent("a Sapot Chat change is silent", rc, out, err)
+check("a Sapot Chat change (update_contact) → changed = sapot", (state(sapot_sid) or {}).get("changed") == "sapot", state(sapot_sid))
+for name in ("save_flow", "reply_to_conversation", "create_knowledge_entry", "set_flow_agent_inboxes", "patch_flow"):
+    other = "sess-cccc-07" + name[:2]
+    run("change_seen.sh", post_tool(other, SAPOT + name, {"account_id": 2}, {}))
+    check(f"Sapot Chat {name} counts as a change", (state(other) or {}).get("changed") == "sapot", state(other))
+check("change hooks made no requests", requests() == [])
+
+CHANGE_REASON = ("[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
+                 "team task is started. Call team_task_start with the matching task, or create one, then team_task_finish "
+                 "with state done, doing or blocked, the one-line summary and the debrief; then print the close-out "
+                 "status block.")
+rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=False))
+check("Stop after a change with no task → block: start a task and close it out",
+      rc == 0 and json.loads(out or "{}") == {"decision": "block", "reason": CHANGE_REASON}, out)
+rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=True))
+silent("Stop after a change with stop_hook_active passes through", rc, out, err)
+run("start_seen.sh", post_tool(edit_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+rc, out, err, _ = run("stop_gate.sh", base(edit_sid, "Stop", stop_hook_active=False))
+check("Stop after a change with a task started and not finished → block for the close-out",
+      json.loads(out or "{}") == {"decision": "block", "reason": STOP_REASON % TASK_TITLE}, out)
+run("finish_seen.sh", post_tool(edit_sid, FINISH_TOOL, {"state": "doing"}, [{"type": "text", "text": "{}"}]))
+check("team_task_finish clears the change", (state(edit_sid) or {}).get("changed") is None, state(edit_sid))
+rc, out, err, _ = run("stop_gate.sh", base(edit_sid, "Stop", stop_hook_active=False))
+silent("Stop after the close-out passes through", rc, out, err)
+rc, out, err, _ = run("stop_gate.sh", base(push_sid, "Stop", stop_hook_active=False), env={"SAPOT_STAFF_TOKEN": ""})
+silent("Stop after a change on a machine that is not connected passes through", rc, out, err)
+check("change gate made no requests", requests() == [])
+
+# a change made by a shell command (sed, a heredoc, echo >) is seen by comparing the project at Stop
+shell_sid = "sess-cccc-0008"
+in_repo = dict(cwd=str(repo))
+run("session_start.sh", base(shell_sid, "SessionStart", source="startup", **in_repo))
+requests()
+check("SessionStart remembers where the project stood", bool((state(shell_sid) or {}).get("baseline")), state(shell_sid))
+rc, out, err, _ = run("stop_gate.sh", base(shell_sid, "Stop", stop_hook_active=False, **in_repo))
+silent("Stop with the project unchanged passes through", rc, out, err)
+(repo / "hello.txt").write_text("hello\n")
+rc, out, err, _ = run("stop_gate.sh", base(shell_sid, "Stop", stop_hook_active=False, **in_repo))
+check("Stop after a file was written outside the edit tools → block: start a task and close it out",
+      json.loads(out or "{}") == {"decision": "block", "reason": CHANGE_REASON}, out)
+run("start_seen.sh", post_tool(shell_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+run("finish_seen.sh", base(shell_sid, "PostToolUse", tool_name=FINISH_TOOL, tool_input={}, tool_response="{}", **in_repo))
+rc, out, err, _ = run("stop_gate.sh", base(shell_sid, "Stop", stop_hook_active=False, **in_repo))
+silent("Stop after the close-out, project unchanged since, passes through", rc, out, err)
+first = (state(shell_sid) or {}).get("baseline")
+run("session_start.sh", base(shell_sid, "SessionStart", source="compact", **in_repo))
+requests()
+check("a later SessionStart (compact, resume) keeps the starting point", (state(shell_sid) or {}).get("baseline") == first)
+outside_sid = "sess-cccc-0009"
+run("session_start.sh", base(outside_sid, "SessionStart", source="startup", cwd=str(loose)))
+requests()
+check("a session outside any project has no starting point", not (state(outside_sid) or {}).get("baseline"), state(outside_sid))
+
 # ---------------------------------------------------------------- SessionEnd
 rc, out, err, _ = run("session_end.sh", base(sid, "SessionEnd", reason="exit"))
 silent("SessionEnd on a finished task is silent", rc, out, err)

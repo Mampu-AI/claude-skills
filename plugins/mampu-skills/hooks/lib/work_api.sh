@@ -155,7 +155,7 @@ state_set() {
 import json, os, sys, tempfile
 path, pairs = sys.argv[1], sys.argv[2:]
 defaults = {"task_guid": None, "task_title": None, "started": False, "created": False,
-            "milestone": None, "finished": False, "last_assistant": None}
+            "milestone": None, "changed": None, "finished": False, "last_assistant": None}
 try:
     state = json.load(open(path))
     if not isinstance(state, dict):
@@ -222,6 +222,16 @@ if p.get("url"):
     print("[work-loop] This sign-in lacks a Lark permission the loop needs. Tell the person once this session, in "
           "one line, why (%s) and give them this link to approve it: %s. Then carry on." % (p.get("why") or "", p["url"]))
 ' 2>/dev/null
+}
+
+# project_print DIR   prints a short fingerprint of the git project DIR is in (last commit, changed and new
+# files, uncommitted diff), or nothing when DIR is not in a project or is Claude's own ~/.claude. Two
+# different prints mean the project changed, however it was changed (an edit tool, sed, a heredoc, a commit).
+project_print() {
+  top=$(git -C "$1" rev-parse --show-toplevel 2>/dev/null) || return 0
+  case "$top" in "$HOME/.claude"|"$HOME/.claude/"*) return 0 ;; esac
+  { git -C "$top" rev-parse HEAD 2>/dev/null; git -C "$top" status --porcelain=v1 -uall 2>/dev/null
+    git -C "$top" diff HEAD 2>/dev/null; } | cksum | cut -d' ' -f1
 }
 
 hook_context() {
