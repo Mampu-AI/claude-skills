@@ -10,6 +10,7 @@ A request whose api_access_token header is not the expected token gets 401 {"err
 import argparse
 import json
 import sys
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 PREFIX = "/v1/work"
@@ -95,6 +96,8 @@ def _routes(method, path, body):
             return 422, {"error": "slug required"}
         if body.get("slug") == "server-refuses-this":
             return 422, {"error": "looks like it contains a secret"}
+        if body.get("slug") == "slow-record":
+            time.sleep(3)  # longer than the caller waits: stands in for Claude Code killing the hook at its timeout
         return 200, {"slug": body["slug"], "action": "created", "url": "https://github.invalid/records/%s" % body["slug"]}
     return None
 
