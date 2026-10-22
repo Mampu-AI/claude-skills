@@ -24,9 +24,12 @@ LOOK_ONLY = ("list", "get", "search", "count", "filter", "preview", "check", "te
 def in_project(path):
     if not path:
         return False
+    # HOME first: on Windows, Python's "~" is the profile folder, while the hooks run with Git Bash's HOME.
+    home = os.environ.get("HOME") or os.path.expanduser("~")
     path = os.path.abspath(os.path.expanduser(path))
-    claude = os.path.join(os.path.expanduser("~"), ".claude")
-    if path == claude or path.startswith(claude + os.sep):
+    real = os.path.normcase(os.path.realpath(path))
+    claude = os.path.normcase(os.path.realpath(os.path.join(home, ".claude")))
+    if real == claude or real.startswith(claude + os.sep):
         return False
     folder = os.path.dirname(path)
     while folder and not os.path.isdir(folder):

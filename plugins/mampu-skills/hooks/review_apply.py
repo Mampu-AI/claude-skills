@@ -24,7 +24,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path.home() / ".cache" / "sapot-work-loop")
+# HOME first, like the shell hooks: on Windows, Python's own home is the profile folder, not Git Bash's HOME
+HOME = os.environ.get("HOME") or str(Path.home())
+STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path(HOME) / ".cache" / "sapot-work-loop")
 SPOOL = STATE_DIR / "spool"
 DONE = SPOOL / "done"
 LOG = STATE_DIR / "review_apply.log"
@@ -67,7 +69,7 @@ def token():
             found = keychain(["secret-tool", "lookup", "service", service])
         if found:
             return found
-    login_file = os.environ.get("SAPOT_WORK_LOGIN_FILE") or os.path.join(os.path.expanduser("~"), ".config", "sapot", "work-login")
+    login_file = os.environ.get("SAPOT_WORK_LOGIN_FILE") or os.path.join(HOME, ".config", "sapot", "work-login")
     try:
         with open(login_file, encoding="utf-8") as fh:
             found = fh.readline().strip()

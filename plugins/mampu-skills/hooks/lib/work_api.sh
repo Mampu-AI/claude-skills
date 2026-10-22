@@ -241,9 +241,10 @@ hook_context() {
   if command -v python3 >/dev/null 2>&1; then
     python3 -c '
 import json, sys
-out = {"hookSpecificOutput": {"hookEventName": sys.argv[1], "additionalContext": sys.argv[2]}}
+# Windows Python writes \r\n for every newline it prints; captured text keeps the \r, so drop it here.
+out = {"hookSpecificOutput": {"hookEventName": sys.argv[1], "additionalContext": sys.argv[2].replace("\r", "")}}
 if len(sys.argv) > 3 and sys.argv[3]:
-    out["systemMessage"] = sys.argv[3]
+    out["systemMessage"] = sys.argv[3].replace("\r", "")
 print(json.dumps(out))
 ' "$1" "$2" "${3:-}" 2>/dev/null
   elif command -v node >/dev/null 2>&1; then
