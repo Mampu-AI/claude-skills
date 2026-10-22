@@ -583,6 +583,17 @@ login_file.parent.mkdir(parents=True, exist_ok=True)
 login_file.write_text("test\n")
 rc, out, err, _ = run("session_start.sh", base("sess-tttt-0003", "SessionStart", source="startup"), env=no_token)
 check("login file: SessionStart authenticates from ~/.config/sapot/work-login when no keychain", context(out, "SessionStart") == SESSION_START_CONTEXT, out)
+# the MCP sign-in helper, run the way Claude Code runs it: the configured command line through a shell, with
+# the plugin root substituted. A root bash cannot take unquoted (a space here; backslashes on Windows) must still work.
+spaced_root = WORK / "Plugin Root With Space"
+if not spaced_root.exists():
+    spaced_root.symlink_to(PLUGIN, target_is_directory=True)
+helper = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["mampu-tech-team"]["headersHelper"]
+helper_cmd = helper.replace("${CLAUDE_PLUGIN_ROOT}", str(spaced_root))
+helper_env = {k: v for k, v in os.environ.items() if not any(w in k for w in ("TOKEN", "SECRET", "PASSWORD", "KEY", "AUTH"))}
+helper_run = subprocess.run(["bash", "-c", helper_cmd], capture_output=True, text=True, env=helper_env, cwd=str(PLUGIN))
+check("MCP sign-in helper runs from a plugin root bash cannot take unquoted and sends the Lark login",
+      json.loads(helper_run.stdout or "{}") == {"Authorization": "Bearer test"}, (helper_cmd, helper_run.stdout, helper_run.stderr[:200]))
 login_file.unlink()
 listener_file = Path(os.environ["HOME"]) / "listener-login"
 lp = subprocess.Popen(["node", str(SCRIPTS / "login_listener.js"), "sapot-work-login", str(listener_file)],
