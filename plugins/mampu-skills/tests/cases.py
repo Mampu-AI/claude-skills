@@ -9,6 +9,8 @@ import subprocess
 import sys
 import threading
 import time
+
+sys.stdout.reconfigure(encoding="utf-8")  # case names carry arrows; Windows consoles default to ANSI
 from pathlib import Path
 
 PLUGIN = Path(os.environ["PLUGIN_ROOT"])
@@ -242,11 +244,12 @@ check("an edit inside a project → state.changed = file", (state(edit_sid) or {
 write_sid = "sess-cccc-0002"
 run("change_seen.sh", post_tool(write_sid, "Write", {"file_path": str(repo / "src" / "new" / "b.md")}, {}))
 check("a new file in a new folder inside a project counts", (state(write_sid) or {}).get("changed") == "file", state(write_sid))
-skip_sid = "sess-cccc-0003"
-run("change_seen.sh", post_tool(skip_sid, "Write", {"file_path": str(loose / "scratch.txt")}, {}))
-run("change_seen.sh", post_tool(skip_sid, "Edit", {"file_path": str(claude_dir / "note.md")}, {}))
-run("change_seen.sh", post_tool(skip_sid, "NotebookEdit", {"notebook_path": "/nowhere/at/all.ipynb"}, {}))
-check("scratch files, Claude's own notes and missing folders do not count", state(skip_sid) is None, state(skip_sid))
+for skip_sid, tool, args, what in (
+        ("sess-cccc-0003", "Write", {"file_path": str(loose / "scratch.txt")}, "a scratch file outside any project"),
+        ("sess-cccc-0013", "Edit", {"file_path": str(claude_dir / "note.md")}, "Claude's own notes"),
+        ("sess-cccc-0023", "NotebookEdit", {"notebook_path": "/nowhere/at/all.ipynb"}, "a missing folder")):
+    run("change_seen.sh", post_tool(skip_sid, tool, args, {}))
+    check(f"{what} does not count as a change", state(skip_sid) is None, (args, state(skip_sid)))
 
 commit_sid = "sess-cccc-0004"
 run("change_seen.sh", post_tool(commit_sid, "Bash", {"command": 'echo "git commit -m x"'}, {}))

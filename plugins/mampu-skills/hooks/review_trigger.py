@@ -30,7 +30,7 @@ SPOOL = STATE_DIR / "spool"
 
 def load(sid):
     try:
-        state = json.loads((STATE_DIR / f"{sid}.review.json").read_text())
+        state = json.loads((STATE_DIR / f"{sid}.review.json").read_text(encoding="utf-8"))
         if isinstance(state, dict):
             return {"tools": 0, "since_review": 0, "last_fire": 0, **state}
     except (OSError, ValueError):
@@ -40,7 +40,7 @@ def load(sid):
 
 def save(sid, state):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    (STATE_DIR / f"{sid}.review.json").write_text(json.dumps(state))
+    (STATE_DIR / f"{sid}.review.json").write_text(json.dumps(state), encoding="utf-8")
 
 
 def fire(sid, state, reason):

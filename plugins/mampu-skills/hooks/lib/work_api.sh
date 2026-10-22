@@ -13,6 +13,9 @@
 # JSON work (hook input, state file) goes through python3 one-liners, as the sibling plugin's
 # hooks already do; python3 ships with macOS and every Linux Claude Code runs on.
 
+# Every python3 step reads and prints UTF-8: Windows Python otherwise uses the old ANSI code page, and a task
+# title with a dash, an arrow or Chinese text makes the step fail and the hook go silent.
+export PYTHONUTF8=1
 WORK_KEYCHAIN_SERVICES="sapot-work-login sapot-staff-token"  # a Lark login wins over a pasted staff token
 WORK_API_BASE="${SAPOT_API_URL:-https://work.mampuai.com}"
 WORK_API_PREFIX="${SAPOT_WORK_API_PREFIX:-/v1/work}"

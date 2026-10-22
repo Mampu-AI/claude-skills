@@ -42,7 +42,7 @@ RECORD_FIELDS = ("slug", "area", "name", "description", "type", "audience", "bod
 def log(msg):
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        with LOG.open("a") as fh:
+        with LOG.open("a", encoding="utf-8") as fh:
             fh.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
     except OSError:
         pass
@@ -114,7 +114,7 @@ def post_record(record, access_token):
 def save(path, data):
     """Write through a temp file so a kill mid-write never leaves half a spool file."""
     temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(data))
+    temp.write_text(json.dumps(data), encoding="utf-8")
     temp.replace(path)
 
 
@@ -125,7 +125,7 @@ def finish(path, note):
 
 
 def process(path, access_token):
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return finish(path, "REJECTED: not a JSON object")
     if any(SECRET.search(text) for text in strings(data)):
