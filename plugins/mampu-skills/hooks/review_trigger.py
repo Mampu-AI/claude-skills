@@ -23,14 +23,16 @@ from milestone_kind import kind_of  # noqa: E402
 
 INTERVAL = int(os.environ.get("SAPOT_WORK_REVIEW_INTERVAL", "60"))
 COOLDOWN = 20 * 60
-STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path.home() / ".cache" / "sapot-work-loop")
+# HOME first, like the shell hooks: on Windows, Python's own home is the profile folder, not Git Bash's HOME
+HOME = os.environ.get("HOME") or str(Path.home())
+STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path(HOME) / ".cache" / "sapot-work-loop")
 PROMPT = HERE / "review-prompt.md"
 SPOOL = STATE_DIR / "spool"
 
 
 def load(sid):
     try:
-        state = json.loads((STATE_DIR / f"{sid}.review.json").read_text())
+        state = json.loads((STATE_DIR / f"{sid}.review.json").read_text(encoding="utf-8"))
         if isinstance(state, dict):
             return {"tools": 0, "since_review": 0, "last_fire": 0, **state}
     except (OSError, ValueError):
@@ -40,7 +42,7 @@ def load(sid):
 
 def save(sid, state):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
-    (STATE_DIR / f"{sid}.review.json").write_text(json.dumps(state))
+    (STATE_DIR / f"{sid}.review.json").write_text(json.dumps(state), encoding="utf-8")
 
 
 def fire(sid, state, reason):

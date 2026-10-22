@@ -24,7 +24,9 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path.home() / ".cache" / "sapot-work-loop")
+# HOME first, like the shell hooks: on Windows, Python's own home is the profile folder, not Git Bash's HOME
+HOME = os.environ.get("HOME") or str(Path.home())
+STATE_DIR = Path(os.environ.get("SAPOT_WORK_STATE_DIR") or Path(HOME) / ".cache" / "sapot-work-loop")
 SPOOL = STATE_DIR / "spool"
 DONE = SPOOL / "done"
 LOG = STATE_DIR / "review_apply.log"
@@ -42,7 +44,7 @@ RECORD_FIELDS = ("slug", "area", "name", "description", "type", "audience", "bod
 def log(msg):
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        with LOG.open("a") as fh:
+        with LOG.open("a", encoding="utf-8") as fh:
             fh.write(f"{datetime.now():%Y-%m-%d %H:%M:%S} {msg}\n")
     except OSError:
         pass
@@ -67,7 +69,7 @@ def token():
             found = keychain(["secret-tool", "lookup", "service", service])
         if found:
             return found
-    login_file = os.environ.get("SAPOT_WORK_LOGIN_FILE") or os.path.join(os.path.expanduser("~"), ".config", "sapot", "work-login")
+    login_file = os.environ.get("SAPOT_WORK_LOGIN_FILE") or os.path.join(HOME, ".config", "sapot", "work-login")
     try:
         with open(login_file, encoding="utf-8") as fh:
             found = fh.readline().strip()
@@ -114,7 +116,7 @@ def post_record(record, access_token):
 def save(path, data):
     """Write through a temp file so a kill mid-write never leaves half a spool file."""
     temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(data))
+    temp.write_text(json.dumps(data), encoding="utf-8")
     temp.replace(path)
 
 
@@ -125,7 +127,7 @@ def finish(path, note):
 
 
 def process(path, access_token):
-    data = json.loads(path.read_text())
+    data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return finish(path, "REJECTED: not a JSON object")
     if any(SECRET.search(text) for text in strings(data)):

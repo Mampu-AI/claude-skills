@@ -20,7 +20,8 @@ chmod +x "$work/bin/security" "$work/bin/secret-tool"
 python3 "$here/fake_server.py" --port 0 --log "$work/requests.jsonl" --ready-file "$work/port" > "$work/server.out" 2>&1 &
 server_pid=$!
 tries=0
-while [ ! -s "$work/port" ] && [ $tries -lt 50 ]; do sleep 0.1; tries=$((tries + 1)); done
+# up to 30 s: the first Python start on a fresh macOS or Windows machine is slow
+while [ ! -s "$work/port" ] && [ $tries -lt 300 ]; do sleep 0.1; tries=$((tries + 1)); done
 [ -s "$work/port" ] || { echo "fake server did not start"; cat "$work/server.out"; exit 1; }
 port=$(cat "$work/port")
 
