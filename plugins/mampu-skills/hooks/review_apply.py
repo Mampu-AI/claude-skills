@@ -101,9 +101,11 @@ def strings(node):
 def post_record(record, access_token):
     """Returns 'ok', 'refused' (a 4xx that a retry will not change) or 'unreachable'."""
     body = json.dumps({field: record.get(field) for field in RECORD_FIELDS}).encode()
-    request = urllib.request.Request(f"{BASE}{PREFIX}/records", data=body, method="POST",
-                                     headers={"api_access_token": access_token, "Content-Type": "application/json",
-                                              "Accept": "application/json"})
+    headers = {"api_access_token": access_token, "Content-Type": "application/json", "Accept": "application/json"}
+    copy = os.path.basename(os.environ.get("CLAUDE_PLUGIN_ROOT", "").rstrip("/"))
+    if copy:
+        headers["x-work-plugin"] = copy  # which plugin copy made the call, for the owner's team usage view
+    request = urllib.request.Request(f"{BASE}{PREFIX}/records", data=body, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             return "ok" if 200 <= response.status < 300 else "unreachable"

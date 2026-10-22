@@ -17,7 +17,11 @@ done
 f="${SAPOT_WORK_LOGIN_FILE:-$HOME/.config/sapot/work-login}"
 if [ -z "$token" ] && [ -r "$f" ]; then token=$(head -n 1 "$f" 2>/dev/null); fi
 [ -n "$token" ] || token="${SAPOT_WORK_TOKEN:-${SAPOT_STAFF_TOKEN:-}}"
-if [ -n "$token" ]; then
+copy=""  # which plugin copy, for the owner's team usage view
+[ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && copy=$(basename "$CLAUDE_PLUGIN_ROOT" | tr -cd 'A-Za-z0-9._-')
+if [ -n "$token" ] && [ -n "$copy" ]; then
+  printf '{"Authorization": "Bearer %s", "X-Work-Plugin": "%s"}\n' "$token" "$copy"
+elif [ -n "$token" ]; then
   printf '{"Authorization": "Bearer %s"}\n' "$token"
 else
   printf '{}\n'

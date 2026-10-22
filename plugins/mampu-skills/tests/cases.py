@@ -465,6 +465,23 @@ rc, out, err, _ = run("stop_gate.sh", base(offline_sid, "Stop", stop_hook_active
 silent("matched work on a machine that is not connected passes through", rc, out, err)
 requests()
 
+# ---------------------------------------------------------------- every call says which plugin copy made it
+copy_env = {"CLAUDE_PLUGIN_ROOT": str(WORK / "cache" / "mampu" / "mampu-skills" / "4467eed18d81")}
+requests()
+run("prompt_match.sh", base("sess-vvvv-0001", "UserPromptSubmit", prompt=PROMPT), env=copy_env)
+run("session_start.sh", base("sess-vvvv-0001", "SessionStart", source="startup"), env=copy_env)
+seen = requests()
+check("hooks send the plugin copy with each call",
+      len(seen) >= 2 and all(r.get("plugin") == "4467eed18d81" for r in seen), seen)
+copy_file = SPOOL / "sess-vvvv-0001-202610221800.json"
+copy_file.write_text(json.dumps({"session": "sess-vvvv-0001", "records": [dict(good, slug="copy-check")]}))
+run("review_apply.py", base("sess-vvvv-0001", "Stop", stop_hook_active=False), env=copy_env)
+check("the background records step sends the plugin copy", [r.get("plugin") for r in requests()] == ["4467eed18d81"])
+copy_helper = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
+                             env=dict(os.environ, CLAUDE_PLUGIN_ROOT=copy_env["CLAUDE_PLUGIN_ROOT"]))
+check("the team tools' sign-in step sends the plugin copy",
+      json.loads(copy_helper.stdout or "{}").get("X-Work-Plugin") == "4467eed18d81", copy_helper.stdout)
+
 # ---------------------------------------------------------------- server down: silent, fast, exit 0
 down = {"SAPOT_API_URL": f"http://127.0.0.1:{closed_port()}"}
 dsid = "sess-dddd-0001"

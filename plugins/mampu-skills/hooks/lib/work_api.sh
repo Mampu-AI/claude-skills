@@ -50,6 +50,7 @@ work_fetch() {
   body=$(mktemp "${TMPDIR:-/tmp}/sapot-work-body.XXXXXX") || { umask "$old_umask"; rm -f "$hdr"; echo 000; return 0; }
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
+  copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
   code=$(curl -sS --max-time 5 -o "$body" -w '%{http_code}' -X "$method" -H @"$hdr" -H 'Accept: application/json' "$url" 2>/dev/null)
   rm -f "$hdr"
   printf '%s\n' "${code:-000}"
@@ -64,6 +65,7 @@ work_login_state() {
   hdr=$(mktemp "${TMPDIR:-/tmp}/sapot-work-hdr.XXXXXX") || { umask "$old_umask"; echo down; return 0; }
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
+  copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
   code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H @"$hdr" -H 'Accept: application/json' \
     "${WORK_API_BASE%/}${WORK_API_PREFIX}/access" 2>/dev/null)
   rm -f "$hdr"
@@ -73,6 +75,12 @@ work_login_state() {
     503) echo off ;;
     *) echo down ;;
   esac
+}
+
+# plugin_copy   the plugin copy these hooks run from (its cache folder name), sent with every call so the owner can
+# see who still runs an old copy. Prints nothing outside a plugin install.
+plugin_copy() {
+  [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && basename "$CLAUDE_PLUGIN_ROOT" | tr -cd 'A-Za-z0-9._-'
 }
 
 # work_json PY_SCRIPT NODE_SCRIPT  — runs the JSON script on stdin with python3, else node (Windows has node, not python3)
@@ -96,6 +104,7 @@ work_api() {
   body=$(mktemp "${TMPDIR:-/tmp}/sapot-work-body.XXXXXX") || { umask "$old_umask"; rm -f "$hdr"; return 1; }
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
+  copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
   if [ "$method" = "GET" ]; then
     code=$(curl -sS --max-time 5 -o "$body" -w '%{http_code}' -H @"$hdr" -H 'Accept: application/json' "$url" 2>/dev/null)
   else
