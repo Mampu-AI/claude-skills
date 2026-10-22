@@ -594,9 +594,14 @@ if not spaced_root.exists():
 helper = json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["mampu-tech-team"]["headersHelper"]
 helper_cmd = helper.replace("${CLAUDE_PLUGIN_ROOT}", str(spaced_root))
 helper_env = {k: v for k, v in os.environ.items() if not any(w in k for w in ("TOKEN", "SECRET", "PASSWORD", "KEY", "AUTH"))}
-helper_run = subprocess.run(["bash", "-c", helper_cmd], capture_output=True, text=True, env=helper_env, cwd=str(PLUGIN))
+# "sh" as the hooks use it: on Windows a bare "bash" can resolve to the Windows Subsystem for Linux, not Git Bash.
+helper_run = subprocess.run(["sh", "-c", helper_cmd], capture_output=True, text=True, env=helper_env, cwd=str(PLUGIN))
+try:
+    helper_headers = json.loads(helper_run.stdout or "{}")
+except ValueError:
+    helper_headers = {}
 check("MCP sign-in helper runs from a plugin root bash cannot take unquoted and sends the Lark login",
-      json.loads(helper_run.stdout or "{}") == {"Authorization": "Bearer test"}, (helper_cmd, helper_run.stdout, helper_run.stderr[:200]))
+      helper_headers.get("Authorization") == "Bearer test", (helper_cmd, helper_run.stdout, helper_run.stderr[:200]))
 login_file.unlink()
 listener_file = Path(os.environ["HOME"]) / "listener-login"
 lp = subprocess.Popen(["node", str(SCRIPTS / "login_listener.js"), "sapot-work-login", str(listener_file)],
