@@ -6,7 +6,8 @@ Per file: refuse the whole file when any string looks like a secret (same regex 
 otherwise POST each record to work/records (python3 urllib, 5 s timeout, token resolved like
 hooks/lib/work_api.sh). A file whose records all reached the server (2xx or a 4xx refusal that will not
 change on retry) moves to spool/done/; a file the server could not be reached for stays for the next Stop,
-up to MAX_ATTEMPTS, then moves to done/ with the attempt count. Never prints, never raises.
+up to MAX_ATTEMPTS, then moves to done/ with the attempt count. Each posted record is marked in the file at
+once, so a run Claude Code kills at the hook timeout resumes where it stopped. Never prints, never raises.
 Lifted from the learning applier (apply_spool.py).
 
     review_apply.py            process every spool file
@@ -110,6 +111,13 @@ def post_record(record, access_token):
         return "unreachable"
 
 
+def save(path, data):
+    """Write through a temp file so a kill mid-write never leaves half a spool file."""
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(data))
+    temp.replace(path)
+
+
 def finish(path, note):
     DONE.mkdir(parents=True, exist_ok=True)
     path.rename(DONE / path.name)
@@ -136,11 +144,12 @@ def process(path, access_token):
             pending.append(slug)
             continue
         record["_posted"] = result
+        save(path, data)  # Claude Code kills the hook at its timeout; a killed run must not re-send this one
         log(f"{path.name}: {result.upper()} {slug}")
     if not pending:
         return finish(path, f"done ({len(records)} record(s))")
     data["_attempts"] = int(data.get("_attempts") or 0) + 1
-    path.write_text(json.dumps(data))
+    save(path, data)
     if data["_attempts"] >= MAX_ATTEMPTS:
         return finish(path, f"GAVE UP after {MAX_ATTEMPTS} attempts; unposted: {', '.join(pending)}")
     log(f"{path.name}: server unreachable, {len(pending)} record(s) kept for the next Stop")

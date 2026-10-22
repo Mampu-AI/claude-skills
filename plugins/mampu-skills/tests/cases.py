@@ -401,6 +401,22 @@ run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
 check("review_apply treats a 422 as final (moved to done, not retried)",
       len(requests()) == 1 and (SPOOL / "done" / refused_file.name).exists())
 
+killed_file = SPOOL / f"{sid}-202610141203.json"
+killed_file.write_text(json.dumps({"session": sid, "records": [dict(good, slug="first-record"), dict(good, slug="slow-record")]}))
+try:
+    run("review_apply.py", base(sid, "Stop", stop_hook_active=False), timeout=1.5)
+except subprocess.TimeoutExpired:
+    pass
+saved = json.loads(killed_file.read_text())
+check("review_apply keeps each saved record marked when the hook is killed mid-file",
+      [r.get("_posted") for r in saved["records"]] == ["ok", None], saved["records"])
+time.sleep(2)
+requests()
+killed_file.write_text(json.dumps(dict(saved, records=[saved["records"][0], dict(good, slug="second-record")])))
+run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
+check("review_apply resumes after a kill without re-sending what was saved",
+      [r["body"]["slug"] for r in requests()] == ["second-record"] and (SPOOL / "done" / killed_file.name).exists())
+
 # ---------------------------------------------------------------- server down: silent, fast, exit 0
 down = {"SAPOT_API_URL": f"http://127.0.0.1:{closed_port()}"}
 dsid = "sess-dddd-0001"
