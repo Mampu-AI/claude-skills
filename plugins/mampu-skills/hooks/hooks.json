@@ -43,6 +43,7 @@
       {
         "matcher": "*",
         "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/work_seen.sh\"", "timeout": 10 },
           { "type": "command", "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/review_trigger.py\"", "timeout": 10 }
         ]
       }

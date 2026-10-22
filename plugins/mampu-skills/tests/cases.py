@@ -417,6 +417,51 @@ run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
 check("review_apply resumes after a kill without re-sending what was saved",
       [r["body"]["slug"] for r in requests()] == ["second-record"] and (SPOOL / "done" / killed_file.name).exists())
 
+# ---------------------------------------------------------------- work on a matched task without starting it
+MATCHED_REASON = ("[work-loop] This session worked on a request that matched a team task (task-guid-001) and no team task is "
+                  "started. Without asking the person, call team_task_start with that task_guid, or create one when it is the "
+                  "wrong match, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the "
+                  "debrief; then print the close-out status block.")
+msid = "sess-mmmm-0001"
+run("prompt_match.sh", base(msid, "UserPromptSubmit", prompt=PROMPT))
+check("a matched prompt remembers the top task", (state(msid) or {}).get("matched") == "task-guid-001", state(msid))
+for tool in ("Read", "Grep"):
+    run("work_seen.sh", post_tool(msid, tool, {}, {}))
+run("work_seen.sh", post_tool(msid, "mcp__plugin_mampu-skills_mampu-tech-team__team_work_guide", {}, {}))
+check("tool calls after a match are counted, the loop's own tools are not", (state(msid) or {}).get("worked") == 2, state(msid))
+rc, out, err, _ = run("stop_gate.sh", base(msid, "Stop", stop_hook_active=False))
+silent("Stop after a matched prompt and only two tool calls passes through (a quick read)", rc, out, err)
+run("work_seen.sh", post_tool(msid, "Bash", {"command": "ls"}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(msid, "Stop", stop_hook_active=False))
+check("Stop after a matched prompt and three tool calls with no task → block: start the matched task",
+      rc == 0 and json.loads(out or "{}") == {"decision": "block", "reason": MATCHED_REASON}, out)
+rc, out, err, _ = run("stop_gate.sh", base(msid, "Stop", stop_hook_active=False))
+silent("the matched-work hold fires once per session", rc, out, err)
+
+started_sid = "sess-mmmm-0002"
+run("prompt_match.sh", base(started_sid, "UserPromptSubmit", prompt=PROMPT))
+run("start_seen.sh", post_tool(started_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+for _ in range(4):
+    run("work_seen.sh", post_tool(started_sid, "Bash", {"command": "ls"}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(started_sid, "Stop", stop_hook_active=False))
+silent("matched work with a task started is not held by this rule", rc, out, err)
+
+unmatched_sid = "sess-mmmm-0003"
+run("prompt_match.sh", base(unmatched_sid, "UserPromptSubmit", prompt="a question with no match here please"))
+for _ in range(5):
+    run("work_seen.sh", post_tool(unmatched_sid, "Bash", {"command": "ls"}, {}))
+check("tool calls with no matched task are not counted", (state(unmatched_sid) or {}).get("worked") in (None, 0), state(unmatched_sid))
+rc, out, err, _ = run("stop_gate.sh", base(unmatched_sid, "Stop", stop_hook_active=False))
+silent("work with no matched task passes through", rc, out, err)
+
+offline_sid = "sess-mmmm-0004"
+run("prompt_match.sh", base(offline_sid, "UserPromptSubmit", prompt=PROMPT))
+for _ in range(3):
+    run("work_seen.sh", post_tool(offline_sid, "Bash", {"command": "ls"}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(offline_sid, "Stop", stop_hook_active=False), env={"SAPOT_STAFF_TOKEN": ""})
+silent("matched work on a machine that is not connected passes through", rc, out, err)
+requests()
+
 # ---------------------------------------------------------------- server down: silent, fast, exit 0
 down = {"SAPOT_API_URL": f"http://127.0.0.1:{closed_port()}"}
 dsid = "sess-dddd-0001"

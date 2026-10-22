@@ -48,6 +48,14 @@ if isinstance(block, str) and block.strip():
 print(text)
 ' 2>/dev/null) || exit 0
 [ -n "$text" ] || exit 0
+# Remember the top matched task, so the Stop gate can hold a session that works on it without starting one.
+sid=$(printf '%s' "$input" | session_id_from_input)
+top=$(printf '%s' "$response" | python3 -c '
+import json, sys
+tasks = [t for t in (json.load(sys.stdin).get("tasks") or []) if isinstance(t, dict) and t.get("guid")]
+print(tasks[0]["guid"] if tasks else "")
+' 2>/dev/null | tr -cd 'A-Za-z0-9-')
+[ -n "$sid" ] && [ -n "$top" ] && state_set "$sid" matched "\"$top\""
 grant=$(printf '%s' "$response" | permission_context) || grant=""
 [ -n "$grant" ] && text="$text
 $grant"
