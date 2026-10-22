@@ -63,6 +63,8 @@ def _routes(method, path, body):
     if method == "GET" and route == "open":
         return 200, {"tasks": [TASK]}
     if method == "POST" and route == "match":
+        if isinstance(body, dict) and "no match here" in str(body.get("prompt")):
+            return 200, {"tasks": [], "github_issues": [], "records": [], "help_pages": [], "block": BLOCK}
         task = dict(TASK, status="open", score=0.9)
         task.pop("last_note"); task.pop("updated_at")
         records = [{k: r[k] for k in ("slug", "area", "name", "description", "audience", "score")} for r in RECORDS]

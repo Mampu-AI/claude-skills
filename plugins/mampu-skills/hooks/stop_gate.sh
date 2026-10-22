@@ -4,6 +4,7 @@
 # change with no task started asks for the task first. Passes through when stop_hook_active is set (we
 # already blocked once) or nothing is pending.
 . "$(dirname "$0")/lib/work_api.sh"
+MATCHED_WORK_CALLS=3  # below this a matched prompt was a quick read or question, not work
 input=$(cat)
 sid=$(printf '%s' "$input" | session_id_from_input)
 [ -n "$sid" ] || exit 0
@@ -48,7 +49,25 @@ if [ -z "$changed" ] && [ -n "$baseline" ]; then
     state_set "$sid" changed '"file"'
   fi
 fi
-[ -n "$milestone" ] || [ -n "$changed" ] || exit 0
+if [ -z "$milestone" ] && [ -z "$changed" ]; then
+  # No change, but the session did real work (MATCHED_WORK_CALLS tool calls or more) on a request the server
+  # matched to a team task, and no task is started: a diagnosis or a check is work too. Held once per session.
+  matched=$(state_get "$sid" matched)
+  worked=$(state_get "$sid" worked)
+  [ -n "$matched" ] && [ "${worked:-0}" -ge "$MATCHED_WORK_CALLS" ] || exit 0
+  [ "$(state_get "$sid" started)" = "true" ] || [ "$(state_get "$sid" held_matched)" = "true" ] && exit 0
+  work_token >/dev/null || exit 0
+  state_set "$sid" held_matched true
+  python3 -c '
+import json, sys
+print(json.dumps({"decision": "block", "reason": (
+    "[work-loop] This session worked on a request that matched a team task (%s) and no team task is started. "
+    "Without asking the person, call team_task_start with that task_guid, or create one when it is the wrong match, "
+    "then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then "
+    "print the close-out status block." % sys.argv[1])}))
+' "$matched" 2>/dev/null
+  exit 0
+fi
 [ "$finished" = "true" ] && exit 0
 if [ -z "$milestone" ]; then
   # A change without a PR step (a client updated in Sapot Chat, a file edit, a commit). An unconnected
