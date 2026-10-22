@@ -26,10 +26,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Make python3 available on Windows (the hooks call python3, as a normal Windows install provides)
-        if: runner.os == 'Windows'
-        run: |
-          dir=$(dirname "$(command -v python)")
-          cp "$dir/python.exe" "$dir/python3.exe"
       - name: Hook tests
         run: sh plugins/mampu-skills/tests/run.sh
