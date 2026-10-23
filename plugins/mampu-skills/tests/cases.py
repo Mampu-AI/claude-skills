@@ -429,6 +429,53 @@ check("the records review is told the server's exact topics, audiences and descr
       "`dev`, `flows`, `channels`, `clients`, `docs`, `ops`, `sales` or `support`" in prompt
       and "`all`, `dev`, `sales`, `ops` or `support`" in prompt and "220 characters" in prompt)
 
+# ---------------------------------------------------------------- one-time recovery of refused records
+# Before records were fitted, the server refused about half of them and they were set aside. Once per computer the
+# applier re-sends the latest version of each refused record from the last 14 days, fitted, but only when the
+# records repo does not have it yet (an existing record may hold newer text). Resumable across Stops.
+recovery = STATE_DIR / "records-recovery.json"
+recovery.unlink(missing_ok=True)
+for old in (SPOOL / "done").glob("*.json"):
+    old.unlink()
+requests()
+
+
+def done_file(name, records, days_old=0):
+    path = SPOOL / "done" / name
+    path.write_text(json.dumps({"session": sid, "records": records}))
+    if days_old:
+        stamp = time.time() - days_old * 86400
+        os.utime(path, (stamp, stamp))
+
+
+done_file("s1-202610170900.json", [dict(good, slug="lost-record", area="dashboard", description="first try", _posted="refused")])
+done_file("s1-202610180900.json", [dict(good, slug="lost-record", area="dashboard", description="latest try", _posted="refused"),
+                                   dict(good, slug="flow-turn-handling-fix", _posted="refused"),
+                                   dict(good, slug="saved-record", _posted="ok")])
+done_file("s2-202610190900.json", [dict(good, slug="second-lost", area="mobile")])  # older files mark nothing
+done_file("s0-202609010900.json", [dict(good, slug="too-old-record", _posted="refused")], days_old=30)
+run("review_apply.py", base(sid, "Stop", stop_hook_active=False), env={"SAPOT_RECOVERY_BUDGET_S": "0"})
+first = requests()
+check("recovery: one record per run when out of time, and it checks the repo before sending",
+      [(r["method"], r["path"]) for r in first] == [("GET", "/v1/work/records/flow-turn-handling-fix"),
+                                                     ("GET", "/v1/work/records/lost-record"),
+                                                     ("POST", "/v1/work/records")], first)
+check("recovery: sends the latest version of a refused record, fitted",
+      first[-1]["body"]["slug"] == "lost-record" and first[-1]["body"]["description"] == "latest try"
+      and first[-1]["body"]["area"] == "dev", first[-1]["body"])
+run("review_apply.py", base(sid, "Stop", stop_hook_active=False), env={"SAPOT_RECOVERY_BUDGET_S": "0"})
+second = requests()
+check("recovery: the next run picks up where the last stopped",
+      [(r["method"], r["body"]["slug"] if r["body"] else r["path"]) for r in second] ==
+      [("GET", "/v1/work/records/second-lost"), ("POST", "second-lost")], second)
+run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
+check("recovery: never sends a record the repo already has, a saved one, or one older than 14 days; then stops for good",
+      requests() == [] and json.loads(recovery.read_text()).get("finished") is True, recovery.read_text())
+log_text = (STATE_DIR / "review_apply.log").read_text()
+check("recovery: logs each record it recovered or left alone",
+      "RECOVERED lost-record" in log_text and "RECOVERED second-lost" in log_text
+      and "RECOVERY SKIP flow-turn-handling-fix: already in the records" in log_text, log_text[-600:])
+
 killed_file = SPOOL / f"{sid}-202610141203.json"
 killed_file.write_text(json.dumps({"session": sid, "records": [dict(good, slug="first-record"), dict(good, slug="slow-record")]}))
 try:
