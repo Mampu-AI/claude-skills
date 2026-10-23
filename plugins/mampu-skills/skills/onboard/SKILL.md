@@ -37,7 +37,7 @@ sh "${ROOT}scripts/login.sh"
   workspace, no company email on their Lark account, or no Sapot user with that email (they sign up to Sapot
   with the company email first). Do not retry blindly.
 - `No browser here` with a URL → they open that URL on any device, sign in, and the page shows a one-time
-  token; then run `sh "${ROOT}scripts/save-token.sh" --work` and let them paste it there (never into chat).
+  token; then run `sh "${ROOT}scripts/save-token.sh"` and let them paste it there (never into chat).
 - Timed out → run step 2 again once.
 
 ## 3. The two-minute brief
@@ -57,4 +57,7 @@ Tell them, in your own words, these five things and nothing more:
 
 - Never ask for, accept, print or store a token in the chat. If one appears, tell them to run `login.sh --logout`
   and sign in again.
+- The Lark sign-in is who they are. Never compare it with the Claude account, computer name or any email you see,
+  and never sign anyone out unless the person asks. `Signed in as` someone they say is not them → ask once, and on
+  their word run `login.sh --logout`, then step 2.
 - If `whoami.sh` keeps saying the server is unreachable, stop and hand it to their Mampu admin; do not work around it.

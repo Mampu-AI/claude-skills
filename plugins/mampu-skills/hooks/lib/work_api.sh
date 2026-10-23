@@ -6,9 +6,10 @@
 # error, a timeout or any other status it prints nothing and returns 1, and the calling hook
 # exits 0 without output.
 #
-# The token is resolved exactly like scripts/sapot-headers.sh: OS keychain (service
-# sapot-staff-token) first, then SAPOT_STAFF_TOKEN. It is passed to curl through a 0600 temp
-# header file, never on the command line, and never written anywhere else.
+# The token is resolved exactly like scripts/sapot-headers.sh: the Lark sign-in from the OS keychain
+# (service sapot-work-login), else the sign-in file, else SAPOT_WORK_TOKEN; an old staff token is never
+# sent. It is passed to curl through a 0600 temp header file, never on the command line, and never
+# written anywhere else.
 #
 # JSON work (hook input, state file) goes through python3 one-liners, as the sibling plugin's
 # hooks already do; python3 ships with macOS and every Linux Claude Code runs on.
@@ -16,7 +17,6 @@
 # Every python3 step reads and prints UTF-8: Windows Python otherwise uses the old ANSI code page, and a task
 # title with a dash, an arrow or Chinese text makes the step fail and the hook go silent.
 export PYTHONUTF8=1
-WORK_KEYCHAIN_SERVICES="sapot-work-login sapot-staff-token"  # a Lark login wins over a pasted staff token
 WORK_API_BASE="${SAPOT_API_URL:-https://work.mampuai.com}"
 WORK_API_PREFIX="${SAPOT_WORK_API_PREFIX:-/v1/work}"
 WORK_STATE_DIR="${SAPOT_WORK_STATE_DIR:-$HOME/.cache/sapot-work-loop}"
@@ -24,16 +24,13 @@ WORK_LOGIN_FILE="${SAPOT_WORK_LOGIN_FILE:-$HOME/.config/sapot/work-login}"  # wh
 
 work_token() {
   token=""
-  for service in $WORK_KEYCHAIN_SERVICES; do
-    if command -v security >/dev/null 2>&1; then            # macOS Keychain
-      token=$(security find-generic-password -s "$service" -w 2>/dev/null)
-    elif command -v secret-tool >/dev/null 2>&1; then       # Linux (GNOME Keyring / libsecret)
-      token=$(secret-tool lookup service "$service" 2>/dev/null)
-    fi
-    [ -n "$token" ] && break
-  done
+  if command -v security >/dev/null 2>&1; then            # macOS Keychain
+    token=$(security find-generic-password -s sapot-work-login -w 2>/dev/null)
+  elif command -v secret-tool >/dev/null 2>&1; then       # Linux (GNOME Keyring / libsecret)
+    token=$(secret-tool lookup service sapot-work-login 2>/dev/null)
+  fi
   if [ -z "$token" ] && [ -r "$WORK_LOGIN_FILE" ]; then token=$(head -n 1 "$WORK_LOGIN_FILE" 2>/dev/null); fi
-  [ -n "$token" ] || token="${SAPOT_WORK_TOKEN:-${SAPOT_STAFF_TOKEN:-}}"
+  [ -n "$token" ] || token="${SAPOT_WORK_TOKEN:-}"
   [ -n "$token" ] || return 1
   printf '%s' "$token"
 }
