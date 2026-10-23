@@ -39,6 +39,17 @@ SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SECRET = re.compile(r"(\bsk-[A-Za-z0-9_-]{16,}|\bghp_[A-Za-z0-9]{20,}|\bgithub_pat_|\bxox[bap]-|\bAKIA[0-9A-Z]{16}|"
                     r"-----BEGIN [A-Z ]*PRIVATE KEY|(password|passwd|secret|token)['\"]?\s*[:=]\s*['\"]?[A-Za-z0-9/+_-]{12,})", re.I)
 RECORD_FIELDS = ("slug", "area", "name", "description", "type", "audience", "body")
+# The server's fixed lists and limit. The reviewing agent picks topics freely ("dashboard", "flow-runtime") and nobody
+# is there to rewrite a refused record, so fit() files it under the nearest topic instead of losing it.
+AREAS = ("dev", "flows", "channels", "clients", "docs", "ops", "sales", "support")
+AUDIENCES = ("all", "dev", "sales", "ops", "support")
+DESCRIPTION_MAX = 220
+AREA_OF = {
+    "flows": ("flow", "knowledge", "automation", "calendar", "message-sequence", "ai-attribute"),
+    "channels": ("whatsapp", "social", "comment", "conversation", "assignment", "inbox", "channel"),
+    "docs": ("help", "website", "doc"),
+    "sales": ("billing", "sales"),
+}
 
 
 def log(msg):
@@ -97,9 +108,26 @@ def strings(node):
             yield from strings(value)
 
 
+def fit(record):
+    """The record as the server will take it: a topic and audience from its lists, a description within its limit."""
+    fitted = {field: record.get(field) for field in RECORD_FIELDS}
+    area = str(fitted.get("area") or "").strip().lower()
+    if area not in AREAS:
+        area = next((name for name, starts in AREA_OF.items() if area.startswith(starts)), "dev")
+    fitted["area"] = area
+    if fitted.get("audience") not in AUDIENCES:
+        fitted["audience"] = "all"
+    description = " ".join(str(fitted.get("description") or "").split())
+    if len(description) > DESCRIPTION_MAX:
+        description = description[: DESCRIPTION_MAX - 1].rsplit(" ", 1)[0].rstrip(" ,;:-") + "…"
+    fitted["description"] = description
+    return fitted
+
+
 def post_record(record, access_token):
-    """Returns 'ok', 'refused' (a 4xx that a retry will not change) or 'unreachable'."""
-    body = json.dumps({field: record.get(field) for field in RECORD_FIELDS}).encode()
+    """Returns ('ok' | 'refused' | 'unreachable', the server's reason for a refusal). A refusal is a 4xx that a retry
+    will not change."""
+    body = json.dumps(fit(record)).encode()
     headers = {"api_access_token": access_token, "Content-Type": "application/json", "Accept": "application/json"}
     copy = os.path.basename(os.environ.get("CLAUDE_PLUGIN_ROOT", "").rstrip("/"))
     if copy:
@@ -107,11 +135,17 @@ def post_record(record, access_token):
     request = urllib.request.Request(f"{BASE}{PREFIX}/records", data=body, method="POST", headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
-            return "ok" if 200 <= response.status < 300 else "unreachable"
+            return ("ok" if 200 <= response.status < 300 else "unreachable"), ""
     except urllib.error.HTTPError as err:
-        return "refused" if 400 <= err.code < 500 else "unreachable"
+        if not 400 <= err.code < 500:
+            return "unreachable", ""
+        try:
+            reason = str(json.loads(err.read().decode("utf-8", "replace")).get("error") or "")
+        except (ValueError, AttributeError, OSError):
+            reason = ""
+        return "refused", reason or f"HTTP {err.code}"
     except (urllib.error.URLError, OSError, ValueError):
-        return "unreachable"
+        return "unreachable", ""
 
 
 def save(path, data):
@@ -142,13 +176,13 @@ def process(path, access_token):
             continue
         if record.get("_posted"):
             continue
-        result = post_record(record, access_token)
+        result, reason = post_record(record, access_token)
         if result == "unreachable":
             pending.append(slug)
             continue
         record["_posted"] = result
         save(path, data)  # Claude Code kills the hook at its timeout; a killed run must not re-send this one
-        log(f"{path.name}: {result.upper()} {slug}")
+        log(f"{path.name}: {result.upper()} {slug}" + (f": {reason}" if reason else ""))
     if not pending:
         return finish(path, f"done ({len(records)} record(s))")
     data["_attempts"] = int(data.get("_attempts") or 0) + 1

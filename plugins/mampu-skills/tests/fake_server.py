@@ -98,6 +98,13 @@ def _routes(method, path, body):
             return 422, {"error": "slug required"}
         if body.get("slug") == "server-refuses-this":
             return 422, {"error": "looks like it contains a secret"}
+        # the real server's checks: a record outside them is refused with this exact wording
+        if body.get("area") not in ("dev", "flows", "channels", "clients", "docs", "ops", "sales", "support"):
+            return 422, {"error": "area must be one of dev, flows, channels, clients, docs, ops, sales, support"}
+        if body.get("audience") not in ("all", "dev", "sales", "ops", "support"):
+            return 422, {"error": "audience must be one of all, dev, sales, ops, support"}
+        if len(" ".join(str(body.get("description") or "").split())) > 220:
+            return 422, {"error": "description must be at most 220 characters"}
         if body.get("slug") == "slow-record":
             time.sleep(3)  # longer than the caller waits: stands in for Claude Code killing the hook at its timeout
         return 200, {"slug": body["slug"], "action": "created", "url": "https://github.invalid/records/%s" % body["slug"]}
