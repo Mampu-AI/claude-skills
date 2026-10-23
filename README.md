@@ -37,7 +37,13 @@ flows plugin) is ignored here; the server refuses it.
 Every merge to `main` is a release: the manifest has no `version` field on purpose, so machines track the
 commits and nothing has to be bumped. Claude Code hands out a new copy only when the version changes, and a
 forgotten bump would reach nobody and say nothing. `validate` warns "No version specified"; leave it that way.
-Teammates pick the new commit up in the background and load it at their next Claude Code start.
+Claude Code's own auto-update skips this plugin (its team tools use a sign-in step), so the plugin downloads
+releases itself: at a session start, at most once an hour, in the background. Hooks switch to the new copy at
+once; the team tools and skills load it at `/reload-plugins` or the next Claude Code start.
+
+`plugins/mampu-skills/RELEASE` is a whole number sent with every team-tool call. Raise it only for a fix that old
+copies must not keep running without; then set `WORK_PLUGIN_MIN_RELEASE` on the work-loop server to the new number,
+and older copies are told to update and reload instead of running.
 
 Never put hosts, credentials, account IDs, or customer data in a skill.
 

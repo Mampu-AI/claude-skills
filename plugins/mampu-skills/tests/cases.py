@@ -555,6 +555,91 @@ rc, out, err, _ = run("prompt_match.sh", base("sess-uuuu-0002", "UserPromptSubmi
 check("running copy is the installed one: no notice", rc == 0 and "systemMessage" not in json.loads(out), out)
 requests()
 
+# ---------------------------------------------------------------- hooks follow the newest downloaded copy
+# The session loaded copy aaaa…; copy bbbb… was downloaded since. Each hook goes through run.sh, which runs the
+# hook from the newest copy, so a fix reaches the hooks of a running session without a reload.
+import shutil
+for copy_id in ("aaaaaaaaaaaa", "bbbbbbbbbbbb"):
+    (pcache / "cache" / "mampu" / "mampu-skills" / copy_id / "hooks").mkdir(parents=True, exist_ok=True)
+    shutil.copy(HOOKS / "run.sh", pcache / "cache" / "mampu" / "mampu-skills" / copy_id / "hooks" / "run.sh")
+    (pcache / "cache" / "mampu" / "mampu-skills" / copy_id / "hooks" / "probe.sh").write_text(
+        'read -r line; printf "%s %s %s" "' + copy_id + '" "$(basename "$CLAUDE_PLUGIN_ROOT")" "$line"\n')
+    (pcache / "cache" / "mampu" / "mampu-skills" / copy_id / "hooks" / "probe.py").write_text(
+        'import os, sys; print("' + copy_id + ' py", sys.stdin.read().strip())\n')
+(running_root / "hooks" / "only_old.sh").write_text('printf "aaaaaaaaaaaa only"\n')
+
+
+def via_run(copy_id, hook, env):
+    p = subprocess.run(["sh", str(pcache / "cache" / "mampu" / "mampu-skills" / copy_id / "hooks" / "run.sh"), hook],
+                       input="hello\n", capture_output=True, text=True, env=dict(os.environ, **env), timeout=20)
+    return p.stdout.strip()
+
+
+check("run.sh runs the hook from the newest downloaded copy and keeps the loaded copy as the plugin root",
+      via_run("aaaaaaaaaaaa", "probe.sh", stale) == "bbbbbbbbbbbb aaaaaaaaaaaa hello", via_run("aaaaaaaaaaaa", "probe.sh", stale))
+check("run.sh runs a Python hook from the newest copy too", via_run("aaaaaaaaaaaa", "probe.py", stale) == "bbbbbbbbbbbb py hello")
+check("run.sh falls back to its own copy when the newest copy lacks the hook",
+      via_run("aaaaaaaaaaaa", "only_old.sh", stale) == "aaaaaaaaaaaa only")
+check("run.sh falls back to its own copy when no install record can be read",
+      via_run("aaaaaaaaaaaa", "probe.sh", {**stale, "CLAUDE_CODE_PLUGIN_CACHE_DIR": str(WORK / "nowhere")}).startswith("aaaaaaaaaaaa "))
+check("run.sh refuses a hook name that is a path", via_run("aaaaaaaaaaaa", "../hooks/probe.sh", stale) == "")
+windows_record = pcache / "windows-record"
+windows_record.mkdir(exist_ok=True)
+(windows_record / "installed_plugins.json").write_text(json.dumps({"version": 2, "plugins": {"mampu-skills@mampu": [
+    {"scope": "managed", "installPath": "C:\\Users\\x\\.claude\\plugins\\cache\\mampu\\mampu-skills\\bbbbbbbbbbbb"}]}}, indent=2))
+check("run.sh reads a Windows install record",
+      via_run("aaaaaaaaaaaa", "probe.sh", {**stale, "CLAUDE_CODE_PLUGIN_CACHE_DIR": str(windows_record)}).startswith("bbbbbbbbbbbb "))
+
+# ---------------------------------------------------------------- the plugin downloads its own releases
+# Claude Code's auto-update skips plugins whose team tools use a sign-in step, so SessionStart starts the two update
+# commands in the background, at most once an hour per computer. A stand-in `claude` logs what it was asked.
+fake_bin = WORK / "fake-claude-bin"
+fake_bin.mkdir(exist_ok=True)
+claude_log = WORK / "claude-calls.log"
+(fake_bin / "claude").write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "' + claude_log.as_posix() + '"\n')
+(fake_bin / "claude").chmod(0o755)
+with_claude = {"PATH": str(fake_bin) + os.pathsep + os.environ["PATH"]}
+marker = STATE_DIR / "self-update-checked"
+
+
+def claude_calls(expect, wait=10):
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        lines = claude_log.read_text().splitlines() if claude_log.exists() else []
+        if len(lines) >= expect and not (STATE_DIR / "self-update.lock").exists():
+            return lines
+        time.sleep(0.1)
+    return claude_log.read_text().splitlines() if claude_log.exists() else []
+
+
+marker.unlink(missing_ok=True)
+rc, out, err, took = run("self_update.sh", base("sess-upd-0001", "SessionStart", source="startup"), env=with_claude)
+silent("self-update: SessionStart says nothing", rc, out, err)
+check("self-update: returns at once", took < 3, f"{took:.1f}s")
+check("self-update: refreshes the marketplace, then updates the plugin, in the background",
+      claude_calls(2) == ["plugin marketplace update mampu", "plugin update mampu-skills@mampu"], claude_calls(2, wait=0))
+claude_log.unlink()
+run("self_update.sh", base("sess-upd-0002", "SessionStart", source="startup"), env=with_claude)
+time.sleep(1)
+check("self-update: a second session within the hour does not update again", not claude_log.exists())
+marker.write_text("100\n")  # long ago
+run("self_update.sh", base("sess-upd-0003", "SessionStart", source="startup"), env={**with_claude, "SAPOT_PLUGIN_SELF_UPDATE": "0"})
+time.sleep(1)
+check("self-update: switched off by SAPOT_PLUGIN_SELF_UPDATE=0", not claude_log.exists())
+rc, out, err, _ = run("self_update.sh", base("sess-upd-0004", "SessionStart", source="startup"),
+                      env={"PATH": os.pathsep.join(p for p in os.environ["PATH"].split(os.pathsep) if p != str(fake_bin)),
+                           "SAPOT_CLAUDE_BIN": "no-such-claude"})
+silent("self-update: no claude command on this computer → silent", rc, out, err)
+marker.unlink(missing_ok=True)
+
+# ---------------------------------------------------------------- the release number the server checks
+release = (PLUGIN / "RELEASE").read_text().strip()
+release_helper = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
+                                env=dict(os.environ, CLAUDE_PLUGIN_ROOT=str(PLUGIN)))
+check("the plugin has a whole-number release", release.isdigit() and int(release) >= 1, release)
+check("the team tools' sign-in step sends the release number",
+      json.loads(release_helper.stdout or "{}").get("X-Work-Plugin-Release") == release, release_helper.stdout)
+
 # ---------------------------------------------------------------- no token / wrong token
 no_token = {"SAPOT_WORK_TOKEN": ""}
 rc, out, err, _ = run("session_start.sh", base("sess-tttt-0001", "SessionStart", source="startup"), env=no_token)
@@ -696,6 +781,10 @@ timeouts = [h.get("timeout", 60) for event in hooks_json["hooks"].values() for g
 check("every hook is type command with a timeout of 10 s or less",
       all(h["type"] == "command" for event in hooks_json["hooks"].values() for group in event for h in group["hooks"])
       and all(t <= 10 for t in timeouts), timeouts)
+commands = [h["command"] for event in hooks_json["hooks"].values() for group in event for h in group["hooks"]]
+check("every hook goes through run.sh, so it follows the newest downloaded copy",
+      all(c.startswith('sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" ') for c in commands), commands)
+check("SessionStart starts the self-update", any(c.endswith(" self_update.sh") for c in commands), commands)
 
 failed = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed")
