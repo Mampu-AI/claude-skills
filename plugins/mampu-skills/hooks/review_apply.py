@@ -35,6 +35,8 @@ PREFIX = os.environ.get("SAPOT_WORK_API_PREFIX") or "/v1/work"
 KEYCHAIN_SERVICE = "sapot-work-login"  # the Lark sign-in; an old staff token is never sent
 MAX_ATTEMPTS = 5
 TIMEOUT = 5
+RECOVERY = STATE_DIR / "records-recovery.json"
+RECOVERY_DAYS = 14
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SECRET = re.compile(r"(\bsk-[A-Za-z0-9_-]{16,}|\bghp_[A-Za-z0-9]{20,}|\bgithub_pat_|\bxox[bap]-|\bAKIA[0-9A-Z]{16}|"
                     r"-----BEGIN [A-Z ]*PRIVATE KEY|(password|passwd|secret|token)['\"]?\s*[:=]\s*['\"]?[A-Za-z0-9/+_-]{12,})", re.I)
@@ -192,13 +194,74 @@ def process(path, access_token):
     log(f"{path.name}: server unreachable, {len(pending)} record(s) kept for the next Stop")
 
 
+def record_exists(slug, access_token):
+    """True / False from the records lookup; None when the server could not answer."""
+    request = urllib.request.Request(f"{BASE}{PREFIX}/records/{slug}", method="GET",
+                                     headers={"api_access_token": access_token, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=TIMEOUT):
+            return True
+    except urllib.error.HTTPError as err:
+        return False if err.code == 404 else None
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
+def recover(access_token):
+    """Once per computer: before records were fitted, the server refused about half of them and they were set
+    aside in spool/done/. Re-send the latest version of each refused (or unmarked) record from the last RECOVERY_DAYS days, fitted,
+    only when the records repo does not have it yet (an existing record may hold newer text). Stops after a send once
+    SAPOT_RECOVERY_BUDGET_S seconds have passed and resumes at the next Stop; then never runs again."""
+    try:
+        state = json.loads(RECOVERY.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {}
+    if state.get("finished"):
+        return
+    handled = set(state.get("handled") or [])
+    cutoff = time.time() - RECOVERY_DAYS * 86400
+    latest = {}
+    for path in sorted(DONE.glob("*.json")) if DONE.is_dir() else []:
+        try:
+            if path.stat().st_mtime < cutoff:
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or any(SECRET.search(text) for text in strings(data)):
+            continue
+        for record in data.get("records") or []:
+            slug = str(record.get("slug") or "") if isinstance(record, dict) else ""
+            # older files never marked what was saved; the records lookup below keeps those safe
+            if record.get("_posted") != "ok" and SLUG.match(slug) and record.get("body"):
+                latest[slug] = record
+    budget = float(os.environ.get("SAPOT_RECOVERY_BUDGET_S") or 6)
+    started = time.time()
+    for slug in sorted(set(latest) - handled):
+        exists = record_exists(slug, access_token)
+        if exists is None:
+            break  # the server did not answer: try again at the next Stop
+        if exists:
+            log(f"RECOVERY SKIP {slug}: already in the records")
+        else:
+            result, reason = post_record(latest[slug], access_token)
+            if result == "unreachable":
+                break
+            log(f"RECOVERED {slug}" if result == "ok" else f"RECOVERY REFUSED {slug}: {reason}")
+        handled.add(slug)
+        RECOVERY.write_text(json.dumps({"handled": sorted(handled)}), encoding="utf-8")
+        if not exists and time.time() - started >= budget:
+            return
+    else:
+        RECOVERY.write_text(json.dumps({"handled": sorted(handled), "finished": True}), encoding="utf-8")
+
+
 def main():
     files = [Path(a) for a in sys.argv[1:]] or sorted(p for p in SPOOL.glob("*.json") if p.is_file())
-    if not files:
-        return
     access_token = token()
     if not access_token:
-        log("no token: spool kept")
+        if files:
+            log("no token: spool kept")
         return
     for path in files:
         try:
@@ -209,6 +272,8 @@ def main():
                 path.rename(path.with_suffix(".failed"))
             except OSError:
                 pass
+    if not sys.argv[1:]:
+        recover(access_token)
 
 
 if __name__ == "__main__":
