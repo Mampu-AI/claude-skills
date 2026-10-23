@@ -31,9 +31,10 @@ Signals (any one warrants action):
 - The same lesson twice is ONE rule: read the existing record and strengthen the sentence, don't append.
 - Fix wrong text in place; never append "UPDATE: actually…".
 - Class-level slugs only (`flow-turn-handling-fix`, not `fix-pr-31`). If the slug only fits today's
-  task, it's wrong. Slug = lowercase words joined by `-`; `area` = the part of the product or the team's
-  work it belongs to (`flow-runtime`, `dashboard`, `ops`, `sales`, …), one word or hyphenated.
-- `audience`: `all`, `dev`, `sales` or `ops` — who should read it.
+  task, it's wrong. Slug = lowercase words joined by `-`; `area` = exactly one of
+  `dev`, `flows`, `channels`, `clients`, `docs`, `ops`, `sales` or `support` (the server refuses any other).
+- `audience`: `all`, `dev`, `sales`, `ops` or `support` — who should read it.
+- `description`: one line, at most 220 characters, saying when to read the record.
 - Do NOT capture: environment/setup failures (capture the fix instead), "tool X is broken" claims,
   transient errors that resolved, one-off tasks, or approaches that never actually worked.
 - Never include secrets, tokens, passwords, customer personal data, hosts, or account numbers. The applier
@@ -67,9 +68,9 @@ Signals (any one warrants action):
      "how_done": "...", "went_right": ["..."], "avoid": ["..."], "key_findings": ["..."]}
   ],
   "records": [
-    {"action": "create|update", "slug": "<class-slug>", "area": "<area>", "name": "<Title case name>",
+    {"action": "create|update", "slug": "<class-slug>", "area": "dev|flows|channels|clients|docs|ops|sales|support", "name": "<Title case name>",
      "description": "<one line: when to read this>", "type": "procedure|decision",
-     "audience": "all|dev|sales|ops", "why": "<one line: the signal that warranted it>",
+     "audience": "all|dev|sales|ops|support", "why": "<one line: the signal that warranted it>",
      "body": "<full Markdown body>"}
   ]
 }

@@ -383,7 +383,7 @@ silent("review_apply is silent", rc, out, err)
 reqs = requests()
 check("review_apply posted only the valid record with the contract fields",
       len(reqs) == 1 and (reqs[0]["method"], reqs[0]["path"], reqs[0]["token_ok"]) == ("POST", "/v1/work/records", True)
-      and reqs[0]["body"] == {k: good[k] for k in ("slug", "area", "name", "description", "type", "audience", "body")}, reqs)
+      and reqs[0]["body"] == dict({k: good[k] for k in ("slug", "area", "name", "description", "type", "audience", "body")}, area="flows"), reqs)
 check("review_apply moved the processed spool file to spool/done/",
       not spool_file.exists() and (SPOOL / "done" / spool_file.name).exists())
 log_text = (STATE_DIR / "review_apply.log").read_text() if (STATE_DIR / "review_apply.log").exists() else ""
@@ -403,6 +403,31 @@ refused_file.write_text(json.dumps({"session": sid, "records": [dict(good, slug=
 run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
 check("review_apply treats a 422 as final (moved to done, not retried)",
       len(requests()) == 1 and (SPOOL / "done" / refused_file.name).exists())
+check("review_apply logs why the server refused a record",
+      "REFUSED server-refuses-this: looks like it contains a secret" in (STATE_DIR / "review_apply.log").read_text())
+
+# The reviewing agent picks a record's topic and audience freely and writes long descriptions; the server keeps a
+# fixed list and a length limit, and nobody is there to rewrite a refused record. The applier fits the record first.
+fit_file = SPOOL / f"{sid}-202610141204.json"
+long_description = "When a teammate reports that " + "the follow-up message did not go out on time " * 8
+fit_file.write_text(json.dumps({"session": sid, "records": [
+    dict(good, slug="dashboard-record", area="dashboard"), dict(good, slug="whatsapp-record", area="WhatsApp"),
+    dict(good, slug="planning-record", area="planning", audience="everyone"),
+    dict(good, slug="long-record", area="ops", description=long_description)]}))
+run("review_apply.py", base(sid, "Stop", stop_hook_active=False))
+sent = {r["body"]["slug"]: r["body"] for r in requests()}
+check("review_apply files a product-part topic under the server's list (dashboard → dev, WhatsApp → channels)",
+      sent.get("dashboard-record", {}).get("area") == "dev" and sent.get("whatsapp-record", {}).get("area") == "channels", sent)
+check("review_apply files an unknown topic under dev and an unknown audience as all",
+      (sent.get("planning-record", {}).get("area"), sent.get("planning-record", {}).get("audience")) == ("dev", "all"), sent)
+check("review_apply shortens a long description to the server's limit at a word break",
+      len(sent.get("long-record", {}).get("description", "x" * 300)) <= 220 and sent["long-record"]["description"].endswith("…"), sent)
+log_text = (STATE_DIR / "review_apply.log").read_text()
+check("review_apply: every fitted record was saved", log_text.count("OK ") >= 4 and "REFUSED dashboard-record" not in log_text, log_text[-500:])
+prompt = (HOOKS / "review-prompt.md").read_text()
+check("the records review is told the server's exact topics, audiences and description limit",
+      "`dev`, `flows`, `channels`, `clients`, `docs`, `ops`, `sales` or `support`" in prompt
+      and "`all`, `dev`, `sales`, `ops` or `support`" in prompt and "220 characters" in prompt)
 
 killed_file = SPOOL / f"{sid}-202610141203.json"
 killed_file.write_text(json.dumps({"session": sid, "records": [dict(good, slug="first-record"), dict(good, slug="slow-record")]}))
