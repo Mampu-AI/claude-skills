@@ -36,5 +36,6 @@ When the person says the task is wrong, call `team_task_start` again with the ri
 ## Rules
 
 - No code detail in anything the loop logs. Task titles, summaries, milestone notes, debriefs and records describe the outcome and the procedure in product terms: the screen, the setting, the behaviour, the command a person types. Never source file paths, function, class, module or table names, code or SQL snippets, config keys. The product is protected intellectual property, and the task list and the records reach people who may not read its code. The server refuses a record or a close-out that carries code detail; rewrite and call again.
-- Never ask for, accept, print or store the person's access token. If one is pasted, tell them to reset it in their Sapot profile and re-save it with the plugin's `save-token.sh`.
-- A tool refusal ("Missing Sapot credentials", "Not allowed", "switched off") means stop and tell the person to check their plugin setup with their Mampu admin; never work around it.
+- Who the person is = this computer's Lark sign-in, nothing else. Never compare it with the Claude account, the computer name or an email you see elsewhere, and never offer to sign someone out or switch accounts. If the person says the sign-in is not theirs, they say "connect me" and the onboard skill signs them in; signing out happens only when they ask.
+- Never ask for, accept, print or store the person's login. If one is pasted, tell them to run the plugin's `login.sh --logout` and sign in again.
+- "Missing access token" or "Invalid or lapsed login" means this computer has no working Lark sign-in: offer "connect me" (the onboard skill). "Not allowed" or "switched off" means stop and tell the person to ask their Mampu admin. Never work around a refusal.

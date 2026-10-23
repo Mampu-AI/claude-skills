@@ -32,7 +32,7 @@ DONE = SPOOL / "done"
 LOG = STATE_DIR / "review_apply.log"
 BASE = (os.environ.get("SAPOT_API_URL") or "https://work.mampuai.com").rstrip("/")
 PREFIX = os.environ.get("SAPOT_WORK_API_PREFIX") or "/v1/work"
-KEYCHAIN_SERVICES = ("sapot-work-login", "sapot-staff-token")  # a Lark login wins over a pasted staff token
+KEYCHAIN_SERVICE = "sapot-work-login"  # the Lark sign-in; an old staff token is never sent
 MAX_ATTEMPTS = 5
 TIMEOUT = 5
 SLUG = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
@@ -59,16 +59,15 @@ def keychain(cmd):
 
 
 def token():
-    """Same order as scripts/sapot-headers.sh: the Lark login, then a pasted staff token, from the macOS
-    Keychain or Linux secret-tool, then the env."""
-    for service in KEYCHAIN_SERVICES:
-        found = ""
-        if which("security"):
-            found = keychain(["security", "find-generic-password", "-s", service, "-w"])
-        elif which("secret-tool"):
-            found = keychain(["secret-tool", "lookup", "service", service])
-        if found:
-            return found
+    """Same order as scripts/sapot-headers.sh: the Lark sign-in from the macOS Keychain or Linux secret-tool,
+    then the sign-in file, then the env."""
+    found = ""
+    if which("security"):
+        found = keychain(["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"])
+    elif which("secret-tool"):
+        found = keychain(["secret-tool", "lookup", "service", KEYCHAIN_SERVICE])
+    if found:
+        return found
     login_file = os.environ.get("SAPOT_WORK_LOGIN_FILE") or os.path.join(HOME, ".config", "sapot", "work-login")
     try:
         with open(login_file, encoding="utf-8") as fh:
@@ -77,7 +76,7 @@ def token():
             return found
     except OSError:
         pass
-    return os.environ.get("SAPOT_WORK_TOKEN", "") or os.environ.get("SAPOT_STAFF_TOKEN", "")
+    return os.environ.get("SAPOT_WORK_TOKEN", "")
 
 
 def which(name):

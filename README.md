@@ -24,10 +24,10 @@ sh ~/.claude/plugins/cache/mampu/mampu-skills/<version>/scripts/login.sh
 
 A browser tab opens on Lark; after you approve, the terminal says "Signed in as …" and the login is in
 your keychain. `scripts/login.sh --logout` revokes it. If no browser can open on that machine, the
-printed URL works from anywhere and the page shows a one-time token for `scripts/save-token.sh --work`.
+printed URL works from anywhere and the page shows a one-time token for `scripts/save-token.sh`.
 
-A pasted Sapot staff token (`scripts/save-token.sh`, as for the flows plugin) still works for scripts
-and as a fallback; the Lark login wins when both are present.
+The Lark sign-in is the only login the plugin sends. An old Sapot staff token (`SAPOT_STAFF_TOKEN`, used by the
+flows plugin) is ignored here; the server refuses it.
 
 ## Adding a skill
 

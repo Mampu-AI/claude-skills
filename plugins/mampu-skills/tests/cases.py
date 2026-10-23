@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """The hook cases run by tests/run.sh (env: PLUGIN_ROOT, REQUEST_LOG, WORK_DIR, HOME, SAPOT_API_URL,
-SAPOT_STAFF_TOKEN). Each case feeds a hook a realistic hook-input JSON on stdin and asserts the exact
+SAPOT_WORK_TOKEN). Each case feeds a hook a realistic hook-input JSON on stdin and asserts the exact
 output, the request the fake server saw, and the state-file transition. Prints one line per case."""
 import json
 import os
@@ -295,7 +295,7 @@ run("finish_seen.sh", post_tool(edit_sid, FINISH_TOOL, {"state": "doing"}, [{"ty
 check("team_task_finish clears the change", (state(edit_sid) or {}).get("changed") is None, state(edit_sid))
 rc, out, err, _ = run("stop_gate.sh", base(edit_sid, "Stop", stop_hook_active=False))
 silent("Stop after the close-out passes through", rc, out, err)
-rc, out, err, _ = run("stop_gate.sh", base(push_sid, "Stop", stop_hook_active=False), env={"SAPOT_STAFF_TOKEN": ""})
+rc, out, err, _ = run("stop_gate.sh", base(push_sid, "Stop", stop_hook_active=False), env={"SAPOT_WORK_TOKEN": ""})
 silent("Stop after a change on a machine that is not connected passes through", rc, out, err)
 check("change gate made no requests", requests() == [])
 
@@ -461,7 +461,7 @@ offline_sid = "sess-mmmm-0004"
 run("prompt_match.sh", base(offline_sid, "UserPromptSubmit", prompt=PROMPT))
 for _ in range(3):
     run("work_seen.sh", post_tool(offline_sid, "Bash", {"command": "ls"}, {}))
-rc, out, err, _ = run("stop_gate.sh", base(offline_sid, "Stop", stop_hook_active=False), env={"SAPOT_STAFF_TOKEN": ""})
+rc, out, err, _ = run("stop_gate.sh", base(offline_sid, "Stop", stop_hook_active=False), env={"SAPOT_WORK_TOKEN": ""})
 silent("matched work on a machine that is not connected passes through", rc, out, err)
 requests()
 
@@ -556,7 +556,7 @@ check("running copy is the installed one: no notice", rc == 0 and "systemMessage
 requests()
 
 # ---------------------------------------------------------------- no token / wrong token
-no_token = {"SAPOT_STAFF_TOKEN": ""}
+no_token = {"SAPOT_WORK_TOKEN": ""}
 rc, out, err, _ = run("session_start.sh", base("sess-tttt-0001", "SessionStart", source="startup"), env=no_token)
 check("no token: SessionStart tells the agent to ask for 'connect me' at each reply",
       rc == 0 and context(out, "SessionStart").startswith("[work-loop] You are not connected to the company Lark and docs yet. Before anything else, ask the person")
@@ -579,11 +579,30 @@ rc, out, err, _ = run("review_apply.py", base("sess-tttt-0001", "Stop", stop_hoo
 silent("no token: review_apply", rc, out, err)
 check("no token: nothing was sent and the spool file is kept", requests() == [] and stuck.exists())
 stuck.unlink()
-rc, out, err, _ = run("session_start.sh", base("sess-tttt-0002", "SessionStart", source="startup"), env={"SAPOT_STAFF_TOKEN": "wrong"})
+rc, out, err, _ = run("session_start.sh", base("sess-tttt-0002", "SessionStart", source="startup"), env={"SAPOT_WORK_TOKEN": "wrong"})
 check("wrong token (401): SessionStart says the sign-in lapsed",
       rc == 0 and "has lapsed or was refused" in context(out, "SessionStart"), out)
 reqs = requests()
 check("wrong token reached the server once and was refused", len(reqs) == 1 and reqs[0]["token_ok"] is False, reqs)
+
+# ---------------------------------------------------------------- only the Lark sign-in counts
+# An old Sapot staff token (shared with the flows plugin) is never sent: the server refuses it, and sending it
+# turned "not signed in" into a misleading "lapsed login".
+staff_only = {"SAPOT_WORK_TOKEN": "", "SAPOT_STAFF_TOKEN": "test"}
+rc, out, err, _ = run("session_start.sh", base("sess-oooo-0001", "SessionStart", source="startup"), env=staff_only)
+check("old staff token only: SessionStart says not connected", "You are not connected" in (context(out, "SessionStart") or ""), out)
+check("old staff token only: hooks sent nothing to the server", requests() == [])
+staff_spool = SPOOL / "sess-oooo-0001-202610231100.json"
+staff_spool.write_text(json.dumps({"session": "sess-oooo-0001", "records": [good]}))
+run("review_apply.py", base("sess-oooo-0001", "Stop", stop_hook_active=False), env=staff_only)
+check("old staff token only: the records step sent nothing", requests() == [] and staff_spool.exists())
+staff_spool.unlink()
+staff_helper = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
+                              env=dict(os.environ, **staff_only))
+check("old staff token only: the team tools' sign-in step sends no login",
+      "Authorization" not in json.loads(staff_helper.stdout or "{}"), staff_helper.stdout)
+check("the team tools carry no fixed login of their own, only the sign-in step's",
+      "headers" not in json.loads((PLUGIN / ".mcp.json").read_text())["mcpServers"]["mampu-tech-team"])
 
 # ---------------------------------------------------------------- onboarding: whoami, the login file, the node listener
 import subprocess, time, urllib.request
@@ -595,8 +614,8 @@ def script(name, env=None, timeout=20):
 rc, out, _ = script("whoami.sh", env=no_token)
 check("whoami: no token → Not connected, exit 1", rc == 1 and out == "Not connected.", out)
 rc, out, _ = script("whoami.sh")
-check("whoami: staff token → connected line, exit 0", rc == 0 and out.startswith("Connected with a staff token as"), out)
-rc, out, _ = script("whoami.sh", env={"SAPOT_STAFF_TOKEN": "wrong"})
+check("whoami: Lark sign-in → signed-in line, exit 0", rc == 0 and out.startswith("Signed in as Test Staff"), out)
+rc, out, _ = script("whoami.sh", env={"SAPOT_WORK_TOKEN": "wrong"})
 check("whoami: refused token → lapsed line, exit 1", rc == 1 and out == "Sign-in lapsed or refused.", out)
 login_file = Path(os.environ["HOME"]) / ".config" / "sapot" / "work-login"
 login_file.parent.mkdir(parents=True, exist_ok=True)
@@ -637,7 +656,7 @@ check("node listener reports who signed in", "Signed in as Bob" in lp.stdout.rea
 listener_file.unlink(missing_ok=True)
 
 # ---------------------------------------------------------------- a new Lark permission to grant
-grant = {"SAPOT_STAFF_TOKEN": "test-grant"}
+grant = {"SAPOT_WORK_TOKEN": "test-grant"}
 GRANT_URL = "https://work.example.invalid/v1/work/auth/lark/grant?ticket=t1"
 rc, out, err, _ = run("session_start.sh", base("sess-gggg-0001", "SessionStart", source="startup"), env=grant)
 check("SessionStart shows the person why and the link when a Lark permission is missing",
@@ -653,7 +672,7 @@ check("UserPromptSubmit tells the agent about the missing permission without a n
 requests()
 
 # ---------------------------------------------------------------- stale tasks: ask the owner once a day
-stale = {"SAPOT_STAFF_TOKEN": "test-stale"}
+stale = {"SAPOT_WORK_TOKEN": "test-stale"}
 STALE_ASK = (" Stale, ask the owner before other work: 1. Pause an ad from the report (waiting) — last note: "
              "Promoted to production: https://example.invalid/pr/9; 2. Mobile calendar tab (doing) — no note yet. Show "
              "the person this numbered list and ask in one line which are done, waiting (on whom), blocked or still "

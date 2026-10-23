@@ -11,7 +11,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/work-loop-tests.XXXXXX") || exit 1
 trap 'kill "$server_pid" 2>/dev/null; rm -rf "$work"' EXIT INT TERM
 
 # A stub keychain so a real token on this machine never leaks into the test: both lookups fail,
-# which makes the hooks fall through to SAPOT_STAFF_TOKEN exactly as on a machine without a keychain.
+# which makes the hooks fall through to SAPOT_WORK_TOKEN (a Lark sign-in) exactly as on a machine without a keychain.
 mkdir -p "$work/bin" "$work/home"
 printf '#!/bin/sh\nexit 1\n' > "$work/bin/security"
 printf '#!/bin/sh\nexit 1\n' > "$work/bin/secret-tool"
@@ -25,7 +25,7 @@ while [ ! -s "$work/port" ] && [ $tries -lt 300 ]; do sleep 0.1; tries=$((tries 
 [ -s "$work/port" ] || { echo "fake server did not start"; cat "$work/server.out"; exit 1; }
 port=$(cat "$work/port")
 
-PATH="$work/bin:$PATH" HOME="$work/home" SAPOT_API_URL="http://127.0.0.1:$port" SAPOT_STAFF_TOKEN=test \
+PATH="$work/bin:$PATH" HOME="$work/home" SAPOT_API_URL="http://127.0.0.1:$port" SAPOT_WORK_TOKEN=test \
   PLUGIN_ROOT="$plugin" REQUEST_LOG="$work/requests.jsonl" WORK_DIR="$work" \
   python3 "$here/cases.py"
 status=$?
