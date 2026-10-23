@@ -122,7 +122,8 @@ class Handler(BaseHTTPRequestHandler):
         token_ok = sent in (self.expected_token, GRANT_TOKEN, STALE_TOKEN)
         path = self.path.split("?", 1)[0]
         with open(self.log_path, "a") as fh:
-            fh.write(json.dumps({"method": method, "path": self.path, "token_ok": token_ok, "body": body}) + "\n")
+            fh.write(json.dumps({"method": method, "path": self.path, "token_ok": token_ok, "body": body,
+                                 "plugin": self.headers.get("x-work-plugin")}) + "\n")
         if not token_ok:
             status, payload = 401, {"error": "not staff"}
         else:
