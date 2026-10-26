@@ -56,6 +56,23 @@ tasks = [t for t in (json.load(sys.stdin).get("tasks") or []) if isinstance(t, d
 print(tasks[0]["guid"] if tasks else "")
 ' 2>/dev/null | tr -cd 'A-Za-z0-9-')
 [ -n "$sid" ] && [ -n "$top" ] && state_set "$sid" matched "\"$top\""
+# Name the session's own task, so a follow-up continues it and different work gets its own task.
+if [ -n "$sid" ] && [ -n "$(state_get "$sid" task_guid)" ]; then
+  current=$(python3 -c '
+import json, sys
+guid, title, started, closed = sys.argv[1:5]
+if started == "true":
+    print("This session is on team task \"%s\" (%s). If this prompt continues that work, carry on with it: no new "
+          "team_task_start. If it is different work, close that task out first (team_task_finish, state done or "
+          "waiting), then start the matching task or create one." % (title, guid))
+else:
+    print("This session last worked on team task \"%s\" (%s), closed as %s. If this prompt continues that work, call "
+          "team_task_start with that same task_guid. If it is different work, start the matching task or create one; "
+          "never record different work under that task." % (title, guid, closed or "done"))
+' "$(state_get "$sid" task_guid)" "$(state_get "$sid" task_title)" "$(state_get "$sid" started)" "$(state_get "$sid" task_state)" 2>/dev/null)
+  [ -n "$current" ] && text="$text
+$current"
+fi
 grant=$(printf '%s' "$response" | permission_context) || grant=""
 [ -n "$grant" ] && text="$text
 $grant"

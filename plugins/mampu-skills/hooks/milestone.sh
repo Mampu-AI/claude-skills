@@ -10,6 +10,6 @@ command=$(printf '%s' "$input" | json_get tool_input.command)
 [ -n "$command" ] || exit 0
 kind=$(printf '%s' "$command" | python3 "$(dirname "$0")/lib/milestone_kind.py" 2>/dev/null)
 [ -n "$kind" ] || exit 0
-state_set "$sid" milestone "\"$kind\"" || exit 0
+state_set "$sid" milestone "\"$kind\"" finished false || exit 0
 hook_context PostToolUse "[work-loop] milestone $kind detected. Call team_task_milestone with the URL if known; when the work is complete, call team_task_finish."
 exit 0
