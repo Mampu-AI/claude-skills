@@ -8,5 +8,5 @@ sid=$(printf '%s' "$input" | session_id_from_input)
 [ -n "$sid" ] || exit 0
 kind=$(printf '%s' "$input" | python3 "$(dirname "$0")/lib/change_kind.py" 2>/dev/null)
 [ -n "$kind" ] || exit 0
-state_set "$sid" changed "\"$kind\""
+state_set "$sid" changed "\"$kind\"" finished false
 exit 0

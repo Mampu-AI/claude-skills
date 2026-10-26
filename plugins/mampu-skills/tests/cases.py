@@ -45,7 +45,14 @@ MILESTONE_CONTEXT = ("[work-loop] milestone %s detected. Call team_task_mileston
                      "complete, call team_task_finish.")
 STOP_REASON = ('[work-loop] Close-out owed for task "%s": call team_task_finish with state done, doing, waiting or '
                "blocked, the one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, and the "
-               "help pages you checked; then print the close-out status block.")
+               "help pages you checked; then print the close-out status block. If this turn worked on something other than "
+               "that task, close that task out first, then start the right task (or create one) and close that out instead.")
+CURRENT_TASK_LINE = ('This session is on team task "%s" (%s). If this prompt continues that work, carry on with it: no new '
+                     "team_task_start. If it is different work, close that task out first (team_task_finish, state done or "
+                     "waiting), then start the matching task or create one.")
+LAST_TASK_LINE = ('This session last worked on team task "%s" (%s), closed as %s. If this prompt continues that work, call '
+                  "team_task_start with that same task_guid. If it is different work, start the matching task or create one; "
+                  "never record different work under that task.")
 START_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_start"
 FINISH_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_finish"
 
@@ -221,11 +228,30 @@ rc, out, err, _ = run("finish_seen.sh", post_tool(sid, FINISH_TOOL, {"task_guid"
                                                    [{"type": "text", "text": json.dumps({"task": {}, "block": BLOCK})}]))
 st = state(sid) or {}
 silent("team_task_finish seen is silent", rc, out, err)
-check("team_task_finish seen → finished true, milestone cleared, task kept",
-      (st.get("finished"), st.get("milestone"), st.get("task_guid"), st.get("started")) == (True, None, "task-guid-001", True), st)
+check("team_task_finish done → finished, milestone cleared, task remembered but no longer running",
+      (st.get("finished"), st.get("milestone"), st.get("task_guid"), st.get("started"), st.get("task_state"))
+      == (True, None, "task-guid-001", False, "done"), st)
 rc, out, err, _ = run("stop_gate.sh", base(sid, "Stop", stop_hook_active=False))
 silent("Stop after team_task_finish passes through", rc, out, err)
 check("state-file hooks made no requests", requests() == [])
+
+# ---------------------------------------------------------------- one task per piece of work
+rc, out, err, _ = run("prompt_match.sh", base(sid, "UserPromptSubmit", prompt=PROMPT))
+check("after a done close-out the next prompt names the last task: same work restarts it, other work gets its own",
+      context(out, "UserPromptSubmit") == PROMPT_CONTEXT + "\n" + LAST_TASK_LINE % (TASK_TITLE, "task-guid-001", "done"), out)
+requests()
+run("change_seen.sh", post_tool(sid, "Edit", {"file_path": "/nowhere"}, {}))  # not a project file: no change
+run("milestone.sh", post_tool(sid, "Bash", {"command": "gh pr create --fill"}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(sid, "Stop", stop_hook_active=False))
+check("a milestone after a close-out holds the stop again", json.loads(out or "{}").get("decision") == "block", out)
+doing_sid = "sess-aaaa-0007"
+run("start_seen.sh", post_tool(doing_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+run("finish_seen.sh", post_tool(doing_sid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": "doing"}, [{"type": "text", "text": "{}"}]))
+check("a close-out as doing keeps the task running", (state(doing_sid) or {}).get("started") is True, state(doing_sid))
+rc, out, err, _ = run("prompt_match.sh", base(doing_sid, "UserPromptSubmit", prompt=PROMPT))
+check("while a task runs the next prompt says: continue it, or close it and start another for different work",
+      context(out, "UserPromptSubmit") == PROMPT_CONTEXT + "\n" + CURRENT_TASK_LINE % (TASK_TITLE, "task-guid-001"), out)
+requests()
 
 # ---------------------------------------------------------------- PostToolUse changes, then Stop
 repo = WORK / "client-repo"
@@ -279,8 +305,8 @@ for name in ("save_flow", "reply_to_conversation", "create_knowledge_entry", "se
 check("change hooks made no requests", requests() == [])
 
 CHANGE_REASON = ("[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
-                 "team task is started. Without asking the person, call team_task_start with the matching task, or create "
-                 "one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
+                 "team task is started. Without asking the person, call team_task_start with the matching task (the same "
+                 "task_guid when it continues the task this session last closed), or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
                  "status block.")
 rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=False))
 check("Stop after a change with no task → block: start a task and close it out",
