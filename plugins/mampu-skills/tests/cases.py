@@ -926,7 +926,7 @@ requests()
 rc, lines, err = doctor()
 check("doctor: a sign-in the team tools cannot read (only in the environment) is saved where they can, then reload",
       rc == 0 and lines[-1] == "NEXT: reload" and doctor_login.exists() and doctor_login.read_text().strip() == "test"
-      and (doctor_login.stat().st_mode & 0o077) == 0, (lines, err))
+      and (os.name == "nt" or (doctor_login.stat().st_mode & 0o077) == 0), (lines, err))
 helper_now = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
                             env={k: v for k, v in os.environ.items() if k != "SAPOT_WORK_TOKEN"})
 check("doctor: after the repair the team tools' sign-in step sends the login without the environment",
@@ -944,7 +944,7 @@ ps_log = WORK / "powershell.log"
     '#!/bin/sh\nprintf "%s %s\\n" "$SAPOT_PATH_MODE" "$SAPOT_GIT_BIN" >> "$PS_LOG"\n'
     'if [ "$STUB_PS" = ok ]; then echo ok; elif [ "$SAPOT_PATH_MODE" = fix ]; then printf "fixed\\r\\n"; else echo missing; fi\n')
 (win_bin / "powershell.exe").chmod(0o755)
-windows = {"SAPOT_OS": "MINGW64_NT-10.0-26100", "SAPOT_GIT_ROOT_WIN": "C:\\Program Files\\Git\\", "PS_LOG": str(ps_log),
+windows = {"SAPOT_OS": "MINGW64_NT-10.0-26100", "SAPOT_POWERSHELL": "powershell.exe", "SAPOT_GIT_ROOT_WIN": "C:\\Program Files\\Git\\", "PS_LOG": str(ps_log),
            "PATH": f"{win_bin}:{os.environ['PATH']}", "SAPOT_WORK_TOKEN": ""}
 rc, lines, err = doctor(windows)
 check("doctor on Windows without Git's shell on the path adds it and says reopen",
@@ -959,6 +959,8 @@ requests()
 
 # the session start checks the Windows path once a day and fixes it before any team tool is refused
 win_start = dict(windows, SAPOT_WORK_TOKEN="test")
+for marker in STATE_DIR.glob("windows-path-checked"):
+    marker.unlink()
 rc, out, err, _ = run("session_start.sh", base("sess-wwww-0001", "SessionStart", source="startup"), env=win_start)
 check("Windows session start adds Git's shell to the path and tells the person to reopen once",
       rc == 0 and json.loads(out).get("systemMessage") == WINDOWS_FIXED_NOTICE
