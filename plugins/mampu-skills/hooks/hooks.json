@@ -47,6 +47,20 @@
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" work_seen.sh", "timeout": 10 },
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" review_trigger.py", "timeout": 10 }
         ]
+      },
+      {
+        "matcher": "mcp__.*mampu-tech-team__.*",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" tool_refused.sh", "timeout": 10 }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "mcp__.*mampu-tech-team__.*",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" tool_refused.sh", "timeout": 10 }
+        ]
       }
     ],
     "Stop": [

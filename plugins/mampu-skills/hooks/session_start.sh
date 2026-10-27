@@ -9,11 +9,24 @@ if [ -n "$sid" ] && [ -z "$(state_get "$sid" baseline)" ]; then
   print=$(project_print "$(printf '%s' "$input" | json_get cwd)")
   [ -n "$print" ] && state_set "$sid" baseline "\"$print\""
 fi
+# Windows: once a day, make sure Git's shell is on the saved path, or the team tools' sign-in step never starts and
+# every team tool is refused although this computer is signed in. Fixed here, before anything is refused.
+windows_context=""
+windows_notice=""
+win_marker="$WORK_STATE_DIR/windows-path-checked"
+if [ "$(cat "$win_marker" 2>/dev/null)" != "$(date +%F)" ]; then
+  win=$(sh "$(dirname "$0")/../scripts/windows-path.sh" fix)
+  case "$win" in ''|skip) ;; *) mkdir -p "$WORK_STATE_DIR" 2>/dev/null && date +%F > "$win_marker" ;; esac
+  if [ "$win" = "fixed" ]; then
+    windows_context=" A Windows setting the team tools need was just fixed on this computer (Git's shell added to the path). Tell the person in one line, before anything else, to close every VS Code window and terminal and open them again, once; until then the team tools may be refused."
+    windows_notice="Work loop: fixed a Windows setting the team tools need. Close every VS Code window and terminal and open them again, once."
+  fi
+fi
 if ! work_token >/dev/null 2>&1; then
-  # Not connected: the person sees the notice directly, and the agent is told to ask before anything else.
+  # Not signed in: the agent opens the Lark sign-in itself (the person only approves it), and the person is told.
   hook_context SessionStart \
-    "[work-loop] You are not connected to the company Lark and docs yet. Before anything else, ask the person in one line to say \"connect me\": one browser sign-in with Lark, then everything else is automatic. Keep asking at each reply until the sign-in is done." \
-    "Work loop: not connected. Say \"connect me\" to sign in with Lark (one browser step)."
+    "[work-loop] This computer is not signed in to the work loop yet. Before anything else, sign the person in yourself with the onboard skill (step 2: it opens the Lark sign-in in their browser and waits). Do not wait for them to ask or say \"connect me\"; tell them in one line to approve the Lark page, then continue with their request.$windows_context" \
+    "Work loop: this computer is not signed in yet. Claude will open the Lark sign-in; approve it in the browser.${windows_notice:+ $windows_notice}"
   exit 0
 fi
 fetched=$(work_fetch GET open)
@@ -22,7 +35,9 @@ response=$(printf '%s\n' "$fetched" | tail -n +2)
 case "$code" in
   2[0-9][0-9]) ;;
   401|403)
-    hook_context SessionStart "[work-loop] Your work-loop sign-in on this computer has lapsed or was refused. Say \"connect me\" and I will sign you in again."
+    hook_context SessionStart \
+      "[work-loop] This computer's work-loop sign-in has lapsed or was refused. Before anything else, sign the person in again yourself with the onboard skill (step 2); do not wait for them to ask. Tell them in one line to approve the Lark page, then continue." \
+      "Work loop: this computer's sign-in lapsed. Claude will open the Lark sign-in again; approve it in the browser."
     exit 0 ;;
   *) exit 0 ;;  # switched off or unreachable: stay silent, never slow the session
 esac
@@ -38,6 +53,7 @@ print("[work-loop] Open for you: " + listed + ". Rule: a reply that starts work 
       "Details: the work-loop skill.")
 ' 2>/dev/null) || exit 0
 [ -n "$text" ] || exit 0
+text="$text$windows_context"
 # Stale tasks (shipped but still open, never noted, or untouched for a while): the owner is asked once a day per
 # computer, and the agent records their answer. Never closed without their word.
 stale=""
@@ -57,11 +73,11 @@ if tasks:
           "the answer. Never close one without their word.")
 ' 2>/dev/null) || stale=""
 fi
-notices=""
+notices="$windows_notice"
 if [ -n "$stale" ]; then
   count=$(printf '%s\n' "$stale" | head -n 1)
   text="$text$(printf '%s\n' "$stale" | tail -n +2)"
-  notices="Work loop: $count of your tasks look stale; Claude will ask you about them."
+  notices="${notices:+$notices }Work loop: $count of your tasks look stale; Claude will ask you about them."
   mkdir -p "$WORK_STATE_DIR" 2>/dev/null && printf '%s\n' "$today" > "$marker"
 fi
 # A Lark permission the loop needs and this sign-in has not granted: the person sees why and the link.
