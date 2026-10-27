@@ -63,8 +63,11 @@ if [ "$(cat "$marker" 2>/dev/null)" != "$today" ]; then
   stale=$(printf '%s' "$response" | python3 -c '
 import json, sys
 tasks = [t for t in (json.load(sys.stdin).get("tasks") or []) if isinstance(t, dict) and t.get("stale") and t.get("title")]
+tasks.sort(key=lambda t: t.get("stale_reason") != "shipped")  # shipped but never closed: most likely just done
 if tasks:
-    listed = "; ".join("%d. %s (%s) — %s" % (i, t["title"], t.get("status") or "doing",
+    listed = "; ".join("%d. %s (%s%s) — %s" % (i, t["title"], t.get("status") or "doing",
+                       "; shipped, never closed: propose done if it is live and checked"
+                       if t.get("stale_reason") == "shipped" else "",
                        "last note: " + t["last_note"] if t.get("last_note") else "no note yet")
                        for i, t in enumerate(tasks, 1))
     print(len(tasks))

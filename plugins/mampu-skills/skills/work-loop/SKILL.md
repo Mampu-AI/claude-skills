@@ -27,7 +27,11 @@ Client:    none on this task
 
 ## Stale tasks
 
-Once a day the session start lists your stale tasks (shipped but still open or never noted, after three hours; or untouched for a day, three days for waiting). Before other work, show the person that numbered list and ask in one line which are done, waiting (on whom), blocked or still doing, then call `team_task_finish` for each from the answer. Never close a stale task without the owner's word.
+Once a day the session start lists your stale tasks (shipped but still open or never noted, after three hours; or untouched for a day, three days for waiting), shipped ones first. Before other work, show the person that numbered list and ask in one line which are done, waiting (on whom), blocked or still doing, then call `team_task_finish` for each from the answer; for a shipped one you know is live and checked, propose done. Never close a stale task without the owner's word. The owner also gets a daily reminder on the Lark task, and a task they tick complete in Lark leaves the list by itself.
+
+When the match context offers one of the person's own open tasks for work that finishes it (a check, a cleanup, a docs step), continue that task and close it out, even when another session started it.
+
+A waiting close-out passes `waiting_for`: decision (the owner must choose) or outside (a client, a partner, a store review). If only a docs offer, a cleanup or watching a live case is left, close it as done and list those in the summary; the server refuses waiting for those.
 
 ## Not that one?
 
