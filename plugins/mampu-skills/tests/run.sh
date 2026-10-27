@@ -25,7 +25,9 @@ while [ ! -s "$work/port" ] && [ $tries -lt 300 ]; do sleep 0.1; tries=$((tries 
 [ -s "$work/port" ] || { echo "fake server did not start"; cat "$work/server.out"; exit 1; }
 port=$(cat "$work/port")
 
+# SAPOT_POWERSHELL: the Windows path check never calls the real PowerShell; the Windows cases use a stub.
 PATH="$work/bin:$PATH" HOME="$work/home" SAPOT_API_URL="http://127.0.0.1:$port" SAPOT_WORK_TOKEN=test \
+  SAPOT_POWERSHELL=no-powershell-in-tests \
   PLUGIN_ROOT="$plugin" REQUEST_LOG="$work/requests.jsonl" WORK_DIR="$work" \
   python3 "$here/cases.py"
 status=$?

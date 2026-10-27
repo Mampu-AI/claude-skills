@@ -17,10 +17,10 @@ pending=$(plugin_update_pending) || pending=""
 UPDATE_NOTICE="Work loop plugin updated. Run /reload-plugins to use it (or restart Claude Code)."
 UPDATE_CONTEXT="[work-loop] A newer copy of this plugin is installed ($pending) but this session still runs the old one. Tell the person in one line to run /reload-plugins or restart Claude Code, then continue."
 if ! work_token >/dev/null 2>&1; then
-  # Not connected: nudge on every work-shaped prompt until the sign-in is done. Nothing is sent anywhere.
+  # Not signed in: on every work-shaped prompt until it is done, the agent opens the sign-in itself. Nothing is sent.
   hook_context UserPromptSubmit \
-    "[work-loop] This person is not connected to the work loop. Before anything else, ask them in one line to say \"connect me\" (one Lark sign-in in the browser), then continue with their request." \
-    "Work loop: not connected. Say \"connect me\" to sign in with Lark."
+    "[work-loop] This computer is not signed in to the work loop yet. Before anything else, sign the person in yourself with the onboard skill (step 2: it opens the Lark sign-in in their browser and waits). Do not wait for them to ask or say \"connect me\"; tell them in one line to approve the Lark page, then continue with their request." \
+    "Work loop: this computer is not signed in yet. Claude will open the Lark sign-in; approve it in the browser."
   exit 0
 fi
 response=$(printf '%s' "$body" | work_api POST match) || {

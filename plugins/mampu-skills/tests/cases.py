@@ -53,6 +53,10 @@ CURRENT_TASK_LINE = ('This session is on team task "%s" (%s). If this prompt con
 LAST_TASK_LINE = ('This session last worked on team task "%s" (%s), closed as %s. If this prompt continues that work, call '
                   "team_task_start with that same task_guid. If it is different work, start the matching task or create one; "
                   "never record different work under that task.")
+NOT_SIGNED_IN_NOTICE = "Work loop: this computer is not signed in yet. Claude will open the Lark sign-in; approve it in the browser."
+WINDOWS_FIXED_NOTICE = ("Work loop: fixed a Windows setting the team tools need. Close every VS Code window and terminal "
+                        "and open them again, once.")
+LAPSED_NOTICE = "Work loop: this computer's sign-in lapsed. Claude will open the Lark sign-in again; approve it in the browser."
 START_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_start"
 FINISH_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_task_finish"
 
@@ -741,16 +745,16 @@ check("the team tools' sign-in step sends the release number",
 # ---------------------------------------------------------------- no token / wrong token
 no_token = {"SAPOT_WORK_TOKEN": ""}
 rc, out, err, _ = run("session_start.sh", base("sess-tttt-0001", "SessionStart", source="startup"), env=no_token)
-check("no token: SessionStart tells the agent to ask for 'connect me' at each reply",
-      rc == 0 and context(out, "SessionStart").startswith("[work-loop] You are not connected to the company Lark and docs yet. Before anything else, ask the person")
-      and "Keep asking at each reply" in context(out, "SessionStart"), out)
-check("no token: SessionStart shows the person a notice too",
-      json.loads(out).get("systemMessage") == "Work loop: not connected. Say \"connect me\" to sign in with Lark (one browser step).", out)
+check("no token: SessionStart tells the agent to sign the person in itself, before anything else",
+      rc == 0 and context(out, "SessionStart").startswith("[work-loop] This computer is not signed in to the work loop yet. Before anything else, sign the person in yourself")
+      and "onboard skill" in context(out, "SessionStart") and "Do not wait for them to ask" in context(out, "SessionStart"), out)
+check("no token: SessionStart tells the person Claude is opening the sign-in",
+      json.loads(out).get("systemMessage") == NOT_SIGNED_IN_NOTICE, out)
 check("no token: the nudge sent nothing to the server", requests() == [])
 rc, out, err, _ = run("prompt_match.sh", base("sess-tttt-0001", "UserPromptSubmit", prompt=PROMPT), env=no_token)
-check("no token: UserPromptSubmit nudges on every work-shaped prompt, agent and person",
-      rc == 0 and context(out, "UserPromptSubmit").startswith("[work-loop] This person is not connected to the work loop. Before anything else, ask them")
-      and json.loads(out).get("systemMessage") == "Work loop: not connected. Say \"connect me\" to sign in with Lark.", out)
+check("no token: UserPromptSubmit has the agent sign them in itself on every work-shaped prompt",
+      rc == 0 and context(out, "UserPromptSubmit").startswith("[work-loop] This computer is not signed in to the work loop yet. Before anything else, sign the person in yourself")
+      and json.loads(out).get("systemMessage") == NOT_SIGNED_IN_NOTICE, out)
 check("no token: the prompt nudge sent nothing to the server", requests() == [])
 rc, out, err, _ = run("prompt_match.sh", base("sess-tttt-0001", "UserPromptSubmit", prompt="/help"), env=no_token)
 silent("no token: a slash command gets no nudge", rc, out, err)
@@ -763,8 +767,10 @@ silent("no token: review_apply", rc, out, err)
 check("no token: nothing was sent and the spool file is kept", requests() == [] and stuck.exists())
 stuck.unlink()
 rc, out, err, _ = run("session_start.sh", base("sess-tttt-0002", "SessionStart", source="startup"), env={"SAPOT_WORK_TOKEN": "wrong"})
-check("wrong token (401): SessionStart says the sign-in lapsed",
-      rc == 0 and "has lapsed or was refused" in context(out, "SessionStart"), out)
+check("wrong token (401): SessionStart has the agent sign the person in again itself",
+      rc == 0 and "has lapsed or was refused" in context(out, "SessionStart")
+      and "sign the person in again yourself" in context(out, "SessionStart")
+      and json.loads(out).get("systemMessage") == LAPSED_NOTICE, out)
 reqs = requests()
 check("wrong token reached the server once and was refused", len(reqs) == 1 and reqs[0]["token_ok"] is False, reqs)
 
@@ -773,7 +779,7 @@ check("wrong token reached the server once and was refused", len(reqs) == 1 and 
 # turned "not signed in" into a misleading "lapsed login".
 staff_only = {"SAPOT_WORK_TOKEN": "", "SAPOT_STAFF_TOKEN": "test"}
 rc, out, err, _ = run("session_start.sh", base("sess-oooo-0001", "SessionStart", source="startup"), env=staff_only)
-check("old staff token only: SessionStart says not connected", "You are not connected" in (context(out, "SessionStart") or ""), out)
+check("old staff token only: SessionStart says not signed in", "not signed in to the work loop yet" in (context(out, "SessionStart") or ""), out)
 check("old staff token only: hooks sent nothing to the server", requests() == [])
 staff_spool = SPOOL / "sess-oooo-0001-202610231100.json"
 staff_spool.write_text(json.dumps({"session": "sess-oooo-0001", "records": [good]}))
@@ -871,6 +877,122 @@ check("a second session the same day does not ask again",
       rc == 0 and "Stale," not in context(out, "SessionStart") and "systemMessage" not in json.loads(out), out)
 requests()
 
+
+# ---------------------------------------------------------------- the team tools are refused: repair without being asked
+OPEN_TOOL = "mcp__plugin_mampu-skills_mampu-tech-team__team_tasks_open"
+failure = base("sess-rrrr-0001", "PostToolUseFailure", tool_name=OPEN_TOOL, tool_input={}, tool_use_id="t1",
+               error="Missing access token", is_interrupt=False)
+rc, out, err, _ = run("tool_refused.sh", failure)
+ctx = context(out, "PostToolUseFailure") or ""
+check("a team tool refused for a missing login tells the agent to run the repair now, without asking",
+      rc == 0 and ctx.startswith("[work-loop] A team tool was refused because it did not get this computer's work-loop sign-in.")
+      and "scripts/doctor.sh" in ctx and "without asking" in ctx and "NEXT: reopen" in ctx, out)
+check("the person sees that Claude is repairing it",
+      json.loads(out).get("systemMessage") == "Work loop: the team tools did not get this computer's sign-in. Claude is repairing it.", out)
+check("the repair step sent nothing to the server", requests() == [])
+rc, out, err, _ = run("tool_refused.sh", failure)
+silent("the repair is asked for once per session", rc, out, err)
+lapsed = post_tool("sess-rrrr-0002", OPEN_TOOL, {}, [{"type": "text", "text": "Invalid or lapsed login; run the Lark sign-in again"}])
+rc, out, err, _ = run("tool_refused.sh", lapsed)
+check("a lapsed login in a tool result also starts the repair", "scripts/doctor.sh" in (context(out, "PostToolUse") or ""), out)
+old_copy = base("sess-rrrr-0003", "PostToolUseFailure", tool_name=OPEN_TOOL, tool_input={}, error=
+                "This Claude session runs an old copy of the Mampu team plugin (release 0, needs 1). Update it and reload.")
+rc, out, err, _ = run("tool_refused.sh", old_copy)
+check("an 'old copy' refusal also starts the repair (on Windows it means the sign-in step never ran)",
+      "scripts/doctor.sh" in (context(out, "PostToolUseFailure") or ""), out)
+record_read = post_tool("sess-rrrr-0006", "mcp__plugin_mampu-skills_mampu-tech-team__internal_doc_get", {"slug": "x"},
+                        [{"type": "text", "text": json.dumps({"body": "When the tools answer Missing access token, " + "check the helper. " * 40})}])
+rc, out, err, _ = run("tool_refused.sh", record_read)
+silent("a record that only mentions the refusal words is not a refusal", rc, out, err)
+other = base("sess-rrrr-0004", "PostToolUseFailure", tool_name=OPEN_TOOL, tool_input={}, error="Lark refused the task update")
+rc, out, err, _ = run("tool_refused.sh", other)
+silent("any other team tool error is left alone", rc, out, err)
+not_ours = base("sess-rrrr-0005", "PostToolUseFailure", tool_name="mcp__github__get_issue", tool_input={}, error="Missing access token")
+rc, out, err, _ = run("tool_refused.sh", not_ours)
+silent("another server's missing token is left alone", rc, out, err)
+
+# ---------------------------------------------------------------- doctor: check and repair this computer's sign-in
+def doctor(env=None):
+    full = dict(os.environ); full.update(env or {})
+    p = subprocess.run(["sh", str(PLUGIN / "scripts" / "doctor.sh")], capture_output=True, text=True, env=full, timeout=30)
+    return p.returncode, p.stdout.strip().splitlines(), p.stderr.strip()
+doctor_login = Path(os.environ["HOME"]) / ".config" / "sapot" / "work-login"
+doctor_login.unlink(missing_ok=True)
+rc, lines, err = doctor({"SAPOT_WORK_TOKEN": ""})
+check("doctor: no sign-in → NEXT: sign-in", rc == 0 and lines[-1] == "NEXT: sign-in", (lines, err))
+rc, lines, err = doctor({"SAPOT_WORK_TOKEN": "wrong"})
+check("doctor: a refused sign-in → NEXT: sign-in", rc == 0 and lines[-1] == "NEXT: sign-in", (lines, err))
+requests()
+rc, lines, err = doctor()
+check("doctor: a sign-in the team tools cannot read (only in the environment) is saved where they can, then reload",
+      rc == 0 and lines[-1] == "NEXT: reload" and doctor_login.exists() and doctor_login.read_text().strip() == "test"
+      and (os.name == "nt" or (doctor_login.stat().st_mode & 0o077) == 0), (lines, err))
+helper_now = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
+                            env={k: v for k, v in os.environ.items() if k != "SAPOT_WORK_TOKEN"})
+check("doctor: after the repair the team tools' sign-in step sends the login without the environment",
+      json.loads(helper_now.stdout or "{}").get("Authorization") == "Bearer test", helper_now.stdout)
+rc, lines, err = doctor({"SAPOT_WORK_TOKEN": ""})
+check("doctor: all good → NEXT: reload (the session holds an old connection)", rc == 0 and lines[-1] == "NEXT: reload", (lines, err))
+check("doctor: never prints the sign-in itself", not any("test" == w for l in lines for w in l.split()), lines)
+requests()
+
+# Windows: Git's shell must be on the Windows path or the team tools' sign-in step never starts.
+win_bin = WORK / "win-bin"
+win_bin.mkdir(exist_ok=True)
+ps_log = WORK / "powershell.log"
+(win_bin / "powershell.exe").write_text(
+    '#!/bin/sh\nprintf "%s %s\\n" "$SAPOT_PATH_MODE" "$SAPOT_GIT_BIN" >> "$PS_LOG"\n'
+    'if [ "$STUB_PS" = ok ]; then echo ok; elif [ "$SAPOT_PATH_MODE" = fix ]; then printf "fixed\\r\\n"; else echo missing; fi\n')
+(win_bin / "powershell.exe").chmod(0o755)
+windows = {"SAPOT_OS": "MINGW64_NT-10.0-26100", "SAPOT_POWERSHELL": "powershell.exe", "SAPOT_GIT_ROOT_WIN": "C:\\Program Files\\Git\\", "PS_LOG": str(ps_log),
+           "PATH": f"{win_bin}:{os.environ['PATH']}", "SAPOT_WORK_TOKEN": ""}
+rc, lines, err = doctor(windows)
+check("doctor on Windows without Git's shell on the path adds it and says reopen",
+      rc == 0 and lines[-1] == "NEXT: reopen" and "fix C:\\Program Files\\Git\\bin" in ps_log.read_text(), (lines, err, ps_log.read_text() if ps_log.exists() else ""))
+ps_log.unlink()
+rc, lines, err = doctor(dict(windows, STUB_PS="ok"))
+check("doctor on Windows with Git's shell on the path → NEXT: reload", rc == 0 and lines[-1] == "NEXT: reload", (lines, err))
+ps_log.unlink()
+rc, lines, err = doctor(dict(windows, SAPOT_OS="Linux", STUB_PS=""))
+check("doctor off Windows never touches the Windows path", lines[-1] == "NEXT: reload" and not ps_log.exists(), lines)
+requests()
+
+# the session start checks the Windows path once a day and fixes it before any team tool is refused
+win_start = dict(windows, SAPOT_WORK_TOKEN="test")
+for marker in STATE_DIR.glob("windows-path-checked"):
+    marker.unlink()
+rc, out, err, _ = run("session_start.sh", base("sess-wwww-0001", "SessionStart", source="startup"), env=win_start)
+check("Windows session start adds Git's shell to the path and tells the person to reopen once",
+      rc == 0 and json.loads(out).get("systemMessage") == WINDOWS_FIXED_NOTICE
+      and "close every VS Code window" in (context(out, "SessionStart") or "")
+      and context(out, "SessionStart").startswith(SESSION_START_CONTEXT), out)
+rc, out, err, _ = run("session_start.sh", base("sess-wwww-0002", "SessionStart", source="startup"), env=win_start)
+check("the Windows path is checked once a day, not at every session start",
+      rc == 0 and context(out, "SessionStart") == SESSION_START_CONTEXT and ps_log.read_text().count("fix") == 1, out)
+ps_log.unlink()
+requests()
+
+for marker in STATE_DIR.glob("windows-path-checked"):
+    marker.unlink()
+rc, out, err, _ = run("session_start.sh", base("sess-wwww-0003", "SessionStart", source="startup"),
+                      env=dict(windows, SAPOT_WORK_TOKEN="", SAPOT_WORK_LOGIN_FILE=str(WORK / "no-login-here")))
+check("a Windows computer that is not signed in gets the path fixed too, in the same session start",
+      rc == 0 and "not signed in to the work loop yet" in (context(out, "SessionStart") or "")
+      and "close every VS Code window" in context(out, "SessionStart")
+      and json.loads(out).get("systemMessage") == NOT_SIGNED_IN_NOTICE + " " + WINDOWS_FIXED_NOTICE, out)
+ps_log.unlink(missing_ok=True)
+doctor_login.unlink(missing_ok=True)
+for marker in STATE_DIR.glob("windows-path-checked"):
+    marker.unlink()
+
+# the team tools name their computer even without a sign-in, so the owner's view can name it
+named = subprocess.run(["sh", str(PLUGIN / "scripts" / "sapot-headers.sh")], capture_output=True, text=True,
+                       env=dict(os.environ, SAPOT_WORK_TOKEN="", SAPOT_DEVICE_LABEL="wei laptop/1",
+                                SAPOT_WORK_LOGIN_FILE=str(WORK / "no-login-here")))
+named_headers = json.loads(named.stdout or "{}")
+check("the team tools' sign-in step names the computer even with no sign-in",
+      named_headers.get("X-Work-Device") == "wei-laptop-1" and "Authorization" not in named_headers, named.stdout)
+
 # ---------------------------------------------------------------- hygiene
 check("no hook wrote outside the temp HOME state dir",
       all(p.parent == STATE_DIR or p.parent == SPOOL or p.parent == SPOOL / "done" for p in STATE_DIR.rglob("*") if p.is_file()))
@@ -883,6 +1005,11 @@ commands = [h["command"] for event in hooks_json["hooks"].values() for group in 
 check("every hook goes through run.sh, so it follows the newest downloaded copy",
       all(c.startswith('sh "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh" ') for c in commands), commands)
 check("SessionStart starts the self-update", any(c.endswith(" self_update.sh") for c in commands), commands)
+refused_groups = {event: [g.get("matcher") for g in groups if any(h["command"].endswith(" tool_refused.sh") for h in g["hooks"])]
+                  for event, groups in hooks_json["hooks"].items()}
+check("the repair step watches the team tools after a result and after a failure",
+      refused_groups.get("PostToolUse") == ["mcp__.*mampu-tech-team__.*"]
+      and refused_groups.get("PostToolUseFailure") == ["mcp__.*mampu-tech-team__.*"], refused_groups)
 
 failed = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed")

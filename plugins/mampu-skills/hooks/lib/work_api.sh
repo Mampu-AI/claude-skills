@@ -48,6 +48,7 @@ work_fetch() {
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
   copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
+  printf 'x-work-device: %s\n' "$(work_device)" >> "$hdr"
   code=$(curl -sS --max-time 5 -o "$body" -w '%{http_code}' -X "$method" -H @"$hdr" -H 'Accept: application/json' "$url" 2>/dev/null)
   rm -f "$hdr"
   printf '%s\n' "${code:-000}"
@@ -63,6 +64,7 @@ work_login_state() {
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
   copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
+  printf 'x-work-device: %s\n' "$(work_device)" >> "$hdr"
   code=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -H @"$hdr" -H 'Accept: application/json' \
     "${WORK_API_BASE%/}${WORK_API_PREFIX}/access" 2>/dev/null)
   rm -f "$hdr"
@@ -72,6 +74,11 @@ work_login_state() {
     503) echo off ;;
     *) echo down ;;
   esac
+}
+
+# work_device   this computer's name as its sign-in labels it (login.sh), kept to a safe short label
+work_device() {
+  printf '%s' "${SAPOT_DEVICE_LABEL:-$(hostname 2>/dev/null || echo unknown)-${USER:-${USERNAME:-user}}}" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-120
 }
 
 # plugin_copy   the plugin copy these hooks run from (its cache folder name), sent with every call so the owner can
@@ -102,6 +109,7 @@ work_api() {
   umask "$old_umask"
   printf 'api_access_token: %s\n' "$token" > "$hdr"
   copy=$(plugin_copy); [ -n "$copy" ] && printf 'x-work-plugin: %s\n' "$copy" >> "$hdr"
+  printf 'x-work-device: %s\n' "$(work_device)" >> "$hdr"
   if [ "$method" = "GET" ]; then
     code=$(curl -sS --max-time 5 -o "$body" -w '%{http_code}' -H @"$hdr" -H 'Accept: application/json' "$url" 2>/dev/null)
   else

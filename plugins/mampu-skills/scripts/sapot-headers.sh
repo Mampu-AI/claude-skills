@@ -16,8 +16,11 @@ copy=""  # which plugin copy, for the owner's team usage view
 [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && copy=$(basename "$CLAUDE_PLUGIN_ROOT" | tr -cd 'A-Za-z0-9._-')
 # the release number: the server turns away copies below its minimum with "update and reload"
 release=$(tr -cd '0-9' < "$(dirname "$0")/../RELEASE" 2>/dev/null)
+# the computer, as its sign-in names it, sent even without a sign-in so the owner can see which computer needs one
+device=$(printf '%s' "${SAPOT_DEVICE_LABEL:-$(hostname 2>/dev/null || echo unknown)-${USER:-${USERNAME:-user}}}" | sed 's/[^A-Za-z0-9._-]/-/g' | cut -c1-120)
 out=""
 [ -n "$token" ] && out="\"Authorization\": \"Bearer $token\""
 [ -n "$copy" ] && out="${out:+$out, }\"X-Work-Plugin\": \"$copy\""
 [ -n "$release" ] && out="${out:+$out, }\"X-Work-Plugin-Release\": \"$release\""
+[ -n "$device" ] && out="${out:+$out, }\"X-Work-Device\": \"$device\""
 printf '{%s}\n' "$out"
