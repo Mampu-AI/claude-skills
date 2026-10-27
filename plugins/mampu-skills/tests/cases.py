@@ -862,12 +862,13 @@ requests()
 
 # ---------------------------------------------------------------- stale tasks: ask the owner once a day
 stale = {"SAPOT_WORK_TOKEN": "test-stale"}
-STALE_ASK = (" Stale, ask the owner before other work: 1. Pause an ad from the report (waiting) — last note: "
+STALE_ASK = (" Stale, ask the owner before other work: 1. Pause an ad from the report (waiting; shipped, never "
+             "closed: propose done if it is live and checked) — last note: "
              "Promoted to production: https://example.invalid/pr/9; 2. Mobile calendar tab (doing) — no note yet. Show "
              "the person this numbered list and ask in one line which are done, waiting (on whom), blocked or still "
              "doing; then call team_task_finish for each from the answer. Never close one without their word.")
 rc, out, err, _ = run("session_start.sh", base("sess-ssss-0001", "SessionStart", source="startup"), env=stale)
-check("SessionStart lists the stale tasks and tells the agent to ask the owner",
+check("SessionStart lists the stale tasks, shipped ones first, and tells the agent to ask the owner",
       rc == 0 and context(out, "SessionStart").endswith(STALE_ASK)
       and "Pause an ad from the report (waiting)" in context(out, "SessionStart").split(" Stale,")[0], out)
 check("SessionStart shows the person the stale count",

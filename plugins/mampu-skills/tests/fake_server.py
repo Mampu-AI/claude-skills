@@ -33,9 +33,11 @@ PERMISSIONS = {"missing": ["bitable:app"], "why": "Client tracking: find the cli
                "url": "https://work.example.invalid/v1/work/auth/lark/grant?ticket=t1"}
 GRANT_TOKEN = "test-grant"  # a login that has not granted the newest Lark permission
 STALE_TOKEN = "test-stale"  # a login with tasks the owner should be asked about
-STALE_TASKS = [dict(TASK, guid="task-guid-002", title="Pause an ad from the report", status="waiting",
-                    last_note="Promoted to production: https://example.invalid/pr/9", stale=True),
-               dict(TASK, guid="task-guid-003", title="Mobile calendar tab", last_note=None, stale=True)]
+STALE_TASKS = [dict(TASK, guid="task-guid-003", title="Mobile calendar tab", last_note=None, stale=True,
+                    stale_reason="no note"),
+               dict(TASK, guid="task-guid-002", title="Pause an ad from the report", status="waiting",
+                    last_note="Promoted to production: https://example.invalid/pr/9", stale=True,
+                    stale_reason="shipped")]
 BLOCK = ("Task:      Collect step keeps old menu pick — found, open → marked doing\n"
          "Records:   flow-turn-handling-fix — found, reading it\n"
          "Help page: Collect steps — found, will check after the change\n"
