@@ -66,9 +66,10 @@ if started == "true":
           "team_task_start. If it is different work, close that task out first (team_task_finish, state done or "
           "waiting), then start the matching task or create one." % (title, guid))
 else:
-    print("This session last worked on team task \"%s\" (%s), closed as %s. If this prompt continues that work, call "
-          "team_task_start with that same task_guid. If it is different work, start the matching task or create one; "
-          "never record different work under that task." % (title, guid, closed or "done"))
+    print("This session last worked on team task \"%s\" (%s), closed as %s. If this prompt continues that work, carry "
+          "on with it: no new team_task_start and no new close-out; the later changes are noted on the task when the "
+          "session ends, and only a PR, a merge or a promote asks for a close-out again. If it is different work, start "
+          "the matching task or create one; never record different work under that task." % (title, guid, closed or "done"))
 ' "$(state_get "$sid" task_guid)" "$(state_get "$sid" task_title)" "$(state_get "$sid" started)" "$(state_get "$sid" task_state)" 2>/dev/null)
   [ -n "$current" ] && text="$text
 $current"
