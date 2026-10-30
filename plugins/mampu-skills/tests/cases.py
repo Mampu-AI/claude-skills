@@ -283,6 +283,19 @@ run("change_seen.sh", post_tool(next_sid, FOLLOW, {"account_id": 2}, {}))
 rc, out, err, _ = run("stop_gate.sh", base(next_sid, "Stop", stop_hook_active=False))
 check("different work started after a close-out is held for its own close-out",
       json.loads(out or "{}") == {"decision": "block", "reason": STOP_REASON % "New thing"}, out)
+order_sid = "sess-ffff-order"
+run("start_seen.sh", post_tool(order_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+run("start_seen.sh", post_tool(order_sid, START_TOOL, {"create": {"title": "New thing"}}, start_response(created=True)))
+closed_a = {"task": {"guid": "task-guid-001", "title": TASK_TITLE, "status": "done"}, "block": BLOCK}
+run("finish_seen.sh", post_tool(order_sid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": "done"},
+                                [{"type": "text", "text": json.dumps(closed_a)}]))
+st = state(order_sid) or {}
+check("the task closed last is the session's task, not the one started last",
+      (st.get("task_guid"), st.get("task_title"), st.get("task_state")) == ("task-guid-001", TASK_TITLE, "done"), st)
+rc, out, err, _ = run("prompt_match.sh", base(order_sid, "UserPromptSubmit", prompt=PROMPT))
+check("the next prompt names the task closed last",
+      context(out, "UserPromptSubmit") == PROMPT_CONTEXT + "\n" + LAST_TASK_LINE % (TASK_TITLE, "task-guid-001", "done"), out)
+requests()
 quiet_sid = "sess-ffff-quiet"
 run("start_seen.sh", post_tool(quiet_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
 run("finish_seen.sh", post_tool(quiet_sid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": "done"}, [{"type": "text", "text": "{}"}]))
