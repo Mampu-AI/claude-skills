@@ -17,5 +17,31 @@ print(json.dumps(state if state in ("done", "doing", "waiting", "blocked") else 
 ' 2>/dev/null) || closed='"done"'
 [ -n "$closed" ] || closed='"done"'
 if [ "$closed" = '"doing"' ]; then started=true; else started=false; fi
+# The task just closed becomes the session's task, even when another was started after it.
+closed_task=$(printf '%s' "$input" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+node = data.get("tool_response")
+for _ in range(4):
+    if isinstance(node, str):
+        try:
+            node = json.loads(node)
+        except ValueError:
+            node = None
+    elif isinstance(node, list):
+        texts = [b.get("text") for b in node if isinstance(b, dict) and b.get("type") == "text"]
+        node = texts[0] if texts else None
+    elif isinstance(node, dict) and not isinstance(node.get("task"), dict):
+        node = node.get("structuredContent") or node.get("result") or node.get("content")
+task = node.get("task") if isinstance(node, dict) and isinstance(node.get("task"), dict) else {}
+guid = task.get("guid") or (data.get("tool_input") or {}).get("task_guid")
+if guid:
+    print(json.dumps(str(guid)))
+    print(json.dumps(task.get("title")) if task.get("title") else "")
+' 2>/dev/null)
+guid=$(printf '%s\n' "$closed_task" | sed -n 1p)
+title=$(printf '%s\n' "$closed_task" | sed -n 2p)
 state_set "$sid" finished true milestone null changed null baseline "$baseline" started "$started" task_state "$closed"
+[ -n "$guid" ] && state_set "$sid" task_guid "$guid"
+[ -n "$title" ] && state_set "$sid" task_title "$title"
 exit 0
