@@ -1,7 +1,7 @@
 #!/bin/sh
 # PostToolUse (team_task_start): copy the task the server answered with into the session state —
-# started, task_guid, task_title, created — and reset finished (a second team_task_start is the
-# "not that one?" correction). Needs no server; silent always.
+# started, task_guid, task_title, created — and reset finished and the last close-out (a second
+# team_task_start is the "not that one?" correction, or the next piece of work). Needs no server; silent always.
 . "$(dirname "$0")/lib/work_api.sh"
 input=$(cat)
 sid=$(printf '%s' "$input" | session_id_from_input)
@@ -42,5 +42,5 @@ print(json.dumps(bool(task.get("created"))))
 guid=$(printf '%s\n' "$fields" | sed -n 1p)
 title=$(printf '%s\n' "$fields" | sed -n 2p)
 created=$(printf '%s\n' "$fields" | sed -n 3p)
-state_set "$sid" started true task_guid "$guid" task_title "$title" created "$created" finished false
+state_set "$sid" started true task_guid "$guid" task_title "$title" created "$created" finished false task_state null
 exit 0

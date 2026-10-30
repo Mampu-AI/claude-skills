@@ -1,8 +1,9 @@
 #!/bin/sh
 # Stop: remember the last assistant line (SessionEnd posts it as the session_end note), then
 # block the stop once when a milestone or a change was recorded and team_task_finish has not run — a
-# change with no task started asks for the task first. Passes through when stop_hook_active is set (we
-# already blocked once) or nothing is pending.
+# change with no task started asks for the task first. Once the session has closed its task out, follow-up
+# changes are not held again (SessionEnd notes them on the task); only a milestone asks for another close-out.
+# Passes through when stop_hook_active is set (we already blocked once) or nothing is pending.
 . "$(dirname "$0")/lib/work_api.sh"
 MATCHED_WORK_CALLS=3  # below this a matched prompt was a quick read or question, not work
 input=$(cat)
@@ -56,6 +57,7 @@ if [ -z "$milestone" ] && [ -z "$changed" ]; then
   worked=$(state_get "$sid" worked)
   [ -n "$matched" ] && [ "${worked:-0}" -ge "$MATCHED_WORK_CALLS" ] || exit 0
   [ "$(state_get "$sid" started)" = "true" ] || [ "$(state_get "$sid" held_matched)" = "true" ] && exit 0
+  [ -n "$(state_get "$sid" task_state)" ] && exit 0
   work_token >/dev/null || exit 0
   state_set "$sid" held_matched true
   python3 -c '
@@ -69,6 +71,7 @@ print(json.dumps({"decision": "block", "reason": (
   exit 0
 fi
 [ "$finished" = "true" ] && exit 0
+[ -z "$milestone" ] && [ -n "$(state_get "$sid" task_state)" ] && exit 0
 if [ -z "$milestone" ]; then
   # A change without a PR step (a client updated in Sapot Chat, a file edit, a commit). An unconnected
   # machine cannot start a task, so it is not held; the connect-me nudge covers it.
@@ -78,8 +81,8 @@ if [ -z "$milestone" ]; then
 import json
 print(json.dumps({"decision": "block", "reason": (
     "[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
-    "team task is started. Without asking the person, call team_task_start with the matching task (the same "
-    "task_guid when it continues the task this session last closed), or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary "
+    "team task is started. Without asking the person, call team_task_start with the matching task, "
+    "or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary "
     "and the debrief; then print the close-out status block.")}))
 ' 2>/dev/null
     exit 0

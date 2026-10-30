@@ -1,15 +1,15 @@
 #!/bin/sh
-# SessionEnd: a task was started and never finished → POST work/milestone kind=session_end with the
-# last assistant line as the note, so the task carries a trace (the server deletes a stray
-# agent-created task with no change recorded). Exits 0 whatever happens.
+# SessionEnd: a task was started and never finished, or the session changed something after closing its task
+# out → POST work/milestone kind=session_end with the last assistant line as the note, so the task carries a
+# trace (the server deletes a stray agent-created task with no change recorded). Exits 0 whatever happens.
 . "$(dirname "$0")/lib/work_api.sh"
 input=$(cat)
 sid=$(printf '%s' "$input" | session_id_from_input)
 [ -n "$sid" ] || exit 0
 started=$(state_get "$sid" started)
 finished=$(state_get "$sid" finished)
-[ "$started" = "true" ] || exit 0
 [ "$finished" = "true" ] && exit 0
+[ "$started" = "true" ] || [ -n "$(state_get "$sid" changed)" ] || exit 0
 guid=$(state_get "$sid" task_guid)
 [ -n "$guid" ] || exit 0
 body=$(python3 -c '

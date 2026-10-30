@@ -50,9 +50,10 @@ STOP_REASON = ('[work-loop] Close-out owed for task "%s": call team_task_finish 
 CURRENT_TASK_LINE = ('This session is on team task "%s" (%s). If this prompt continues that work, carry on with it: no new '
                      "team_task_start. If it is different work, close that task out first (team_task_finish, state done or "
                      "waiting), then start the matching task or create one.")
-LAST_TASK_LINE = ('This session last worked on team task "%s" (%s), closed as %s. If this prompt continues that work, call '
-                  "team_task_start with that same task_guid. If it is different work, start the matching task or create one; "
-                  "never record different work under that task.")
+LAST_TASK_LINE = ('This session last worked on team task "%s" (%s), closed as %s. If this prompt continues that work, carry '
+                  "on with it: no new team_task_start and no new close-out; the later changes are noted on the task when the "
+                  "session ends, and only a PR, a merge or a promote asks for a close-out again. If it is different work, start "
+                  "the matching task or create one; never record different work under that task.")
 NOT_SIGNED_IN_NOTICE = "Work loop: this computer is not signed in yet. Claude will open the Lark sign-in; approve it in the browser."
 WINDOWS_FIXED_NOTICE = ("Work loop: fixed a Windows setting the team tools need. Close every VS Code window and terminal "
                         "and open them again, once.")
@@ -257,6 +258,46 @@ check("while a task runs the next prompt says: continue it, or close it and star
       context(out, "UserPromptSubmit") == PROMPT_CONTEXT + "\n" + CURRENT_TASK_LINE % (TASK_TITLE, "task-guid-001"), out)
 requests()
 
+# ---------------------------------------------------------------- follow-ups after a close-out: one round, not one per reply
+FOLLOW = "mcp__plugin_mampu-chat_sapot-flows__update_contact"
+for closed in ("done", "waiting", "doing"):
+    fsid = "sess-ffff-" + closed
+    run("start_seen.sh", post_tool(fsid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+    run("change_seen.sh", post_tool(fsid, FOLLOW, {"account_id": 2}, {}))
+    run("finish_seen.sh", post_tool(fsid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": closed}, [{"type": "text", "text": "{}"}]))
+    write_transcript(fsid, "Also fixed the Malay wording.")
+    for turn in (1, 2, 3):
+        run("change_seen.sh", post_tool(fsid, FOLLOW, {"account_id": 2}, {}))
+        rc, out, err, _ = run("stop_gate.sh", base(fsid, "Stop", stop_hook_active=False))
+        silent(f"follow-up {turn} after a {closed} close-out changes something: no new start or close-out asked", rc, out, err)
+    rc, out, err, _ = run("session_end.sh", base(fsid, "SessionEnd", reason="exit"))
+    reqs = requests()
+    check(f"the later work after a {closed} close-out is noted on the task once, at session end",
+          len(reqs) == 1 and reqs[0]["body"] == {"task_guid": "task-guid-001", "kind": "session_end", "url": None,
+                                                 "note": "Also fixed the Malay wording.", "session_id": fsid}, reqs)
+next_sid = "sess-ffff-next"
+run("start_seen.sh", post_tool(next_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+run("finish_seen.sh", post_tool(next_sid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": "done"}, [{"type": "text", "text": "{}"}]))
+run("start_seen.sh", post_tool(next_sid, START_TOOL, {"create": {"title": "New thing"}}, start_response(created=True)))
+run("change_seen.sh", post_tool(next_sid, FOLLOW, {"account_id": 2}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(next_sid, "Stop", stop_hook_active=False))
+check("different work started after a close-out is held for its own close-out",
+      json.loads(out or "{}") == {"decision": "block", "reason": STOP_REASON % "New thing"}, out)
+quiet_sid = "sess-ffff-quiet"
+run("start_seen.sh", post_tool(quiet_sid, START_TOOL, {"task_guid": "task-guid-001"}, start_response()))
+run("finish_seen.sh", post_tool(quiet_sid, FINISH_TOOL, {"task_guid": "task-guid-001", "state": "done"}, [{"type": "text", "text": "{}"}]))
+run("session_end.sh", base(quiet_sid, "SessionEnd", reason="exit"))
+check("no later work after the close-out: session end posts nothing", requests() == [])
+held_sid = "sess-ffff-held"
+run("prompt_match.sh", base(held_sid, "UserPromptSubmit", prompt=PROMPT))
+run("start_seen.sh", post_tool(held_sid, START_TOOL, {"task_guid": "task-guid-002"}, start_response()))
+run("finish_seen.sh", post_tool(held_sid, FINISH_TOOL, {"task_guid": "task-guid-002", "state": "waiting"}, [{"type": "text", "text": "{}"}]))
+for _ in range(4):
+    run("work_seen.sh", post_tool(held_sid, "Bash", {"command": "ls"}, {}))
+rc, out, err, _ = run("stop_gate.sh", base(held_sid, "Stop", stop_hook_active=False))
+silent("a session that already closed its own task is not held to start the matched one", rc, out, err)
+requests()
+
 # ---------------------------------------------------------------- PostToolUse changes, then Stop
 repo = WORK / "client-repo"
 (repo / "src").mkdir(parents=True)
@@ -309,8 +350,8 @@ for name in ("save_flow", "reply_to_conversation", "create_knowledge_entry", "se
 check("change hooks made no requests", requests() == [])
 
 CHANGE_REASON = ("[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
-                 "team task is started. Without asking the person, call team_task_start with the matching task (the same "
-                 "task_guid when it continues the task this session last closed), or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
+                 "team task is started. Without asking the person, call team_task_start with the matching task, "
+                 "or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
                  "status block.")
 rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=False))
 check("Stop after a change with no task → block: start a task and close it out",
