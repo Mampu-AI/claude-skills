@@ -968,6 +968,70 @@ not_ours = base("sess-rrrr-0005", "PostToolUseFailure", tool_name="mcp__github__
 rc, out, err, _ = run("tool_refused.sh", not_ours)
 silent("another server's missing token is left alone", rc, out, err)
 
+# ---------------------------------------------------------------- flow tests at DeepSeek peak price: ask once before a batch
+TEST_TOOL = "mcp__plugin_mampu-chat_sapot-flows__test_flow"
+DAY = 1_762_300_800  # 2025-11-05 00:00 UTC (a whole number of days, so DAY + h*3600 is h:00 UTC)
+
+
+def flow_test(sid, at, tool=TEST_TOOL):
+    payload = base(sid, "PreToolUse", tool_name=tool, tool_input={"flow_agent_id": 1, "messages": ["Hi"]}, tool_use_id="t")
+    return run("peak_test_guard.sh", payload, env={"SAPOT_PEAK_CLOCK": str(at)})
+
+
+def decision(out):
+    try:
+        hso = json.loads(out).get("hookSpecificOutput") or {}
+    except ValueError:
+        return None, ""
+    return hso.get("permissionDecision"), hso.get("permissionDecisionReason") or ""
+
+
+off = DAY + 11 * 3600  # 19:00 MYT
+outs = [flow_test("sess-peak-0001", off + i) for i in range(6)]
+check("off-peak, any number of flow tests run without a word", all(rc == 0 and out == "" for rc, out, _, _ in outs), outs[-1])
+lunch = DAY + 5 * 3600  # 13:00 MYT, between the two peak windows
+outs = [flow_test("sess-peak-0002", lunch + i) for i in range(6)]
+check("the lunch gap (12:00-14:00 MYT) is off-peak too", all(out == "" for _, out, _, _ in outs), outs[-1])
+
+peak = DAY + 3 * 3600 + 600  # 11:10 MYT
+outs = [flow_test("sess-peak-0003", peak + i) for i in range(3)]
+check("at peak, the first three flow tests in 15 minutes run without a word", all(rc == 0 and out == "" for rc, out, _, _ in outs), outs)
+rc, out, err, _ = flow_test("sess-peak-0003", peak + 3)
+d, reason = decision(out)
+check("the fourth flow test at peak is held back once", rc == 0 and d == "deny", out)
+check("the agent is told to ask the person: run now at double price, or wait until 12:00 MYT",
+      reason.startswith("[work-loop] DeepSeek peak price") and "11:10 MYT" in reason and "until 12:00 MYT" in reason
+      and "Ask the person" in reason and "same input" in reason, reason)
+check("the person sees why Claude is asking",
+      json.loads(out).get("systemMessage") == "Work loop: DeepSeek charges double until 12:00 MYT. Claude will ask before running more flow tests.", out)
+rc, out, err, _ = flow_test("sess-peak-0003", peak + 10)
+check("a test in the same burst (within 20 s of the hold) is held back too", decision(out)[0] == "deny", out)
+check("the person sees the notice once per hold, not once per held test", "systemMessage" not in json.loads(out), out)
+outs = [flow_test("sess-peak-0003", peak + 90 + i) for i in range(20)]
+check("after the person answers, the rest of the session's tests run until the window ends", all(out == "" for _, out, _, _ in outs), outs[0])
+check("the guard sent nothing to the server", requests() == [])
+
+later = DAY + 6 * 3600 + 1800  # 14:30 MYT, the next peak window
+outs = [flow_test("sess-peak-0003", later + i)[1] for i in range(4)]
+d, reason = decision(outs[3])
+check("a new peak window asks again, with its own end time", outs[:3] == ["", "", ""] and d == "deny" and "until 18:00 MYT" in reason, outs)
+
+spread = DAY + 2 * 3600  # 10:00 MYT
+outs = [flow_test("sess-peak-0004", spread + i * 400)[1] for i in range(5)]
+check("tests spread more than 15 minutes apart never ask", all(o == "" for o in outs), outs)
+
+burst = [flow_test("sess-peak-0005", peak + 1) for _ in range(27)]
+denied = [o for _, o, _, _ in burst if decision(o)[0] == "deny"]
+check("a burst of 27 at once lets three through and holds the rest back", len(denied) == 24, len(denied))
+check("after the burst is held back, the retried tests run", flow_test("sess-peak-0005", peak + 30)[1] == "")
+
+customer = flow_test("sess-peak-0006", peak, tool="mcp__mampu-chat__test_flow")
+for i in range(1, 4):
+    customer = flow_test("sess-peak-0006", peak + i, tool="mcp__mampu-chat__test_flow")
+check("the customer connector's test tool (any server name) is watched too", decision(customer[1])[0] == "deny", customer[1])
+other = [flow_test("sess-peak-0007", peak + i, tool="mcp__plugin_mampu-chat_sapot-flows__get_flow_test_run") for i in range(5)]
+check("reading a test run's result is never held back", all(o == "" for _, o, _, _ in other), other[-1])
+
 # ---------------------------------------------------------------- doctor: check and repair this computer's sign-in
 def doctor(env=None):
     full = dict(os.environ); full.update(env or {})
@@ -1064,6 +1128,9 @@ check("every hook goes through run.sh, so it follows the newest downloaded copy"
 check("SessionStart starts the self-update", any(c.endswith(" self_update.sh") for c in commands), commands)
 refused_groups = {event: [g.get("matcher") for g in groups if any(h["command"].endswith(" tool_refused.sh") for h in g["hooks"])]
                   for event, groups in hooks_json["hooks"].items()}
+guard_groups = [g.get("matcher") for g in hooks_json["hooks"].get("PreToolUse", [])
+                if any(h["command"].endswith(" peak_test_guard.sh") for h in g["hooks"])]
+check("the peak-price guard runs before any connector's flow test tool", guard_groups == ["mcp__.*__test_flow"], guard_groups)
 check("the repair step watches the team tools after a result and after a failure",
       refused_groups.get("PostToolUse") == ["mcp__.*mampu-tech-team__.*"]
       and refused_groups.get("PostToolUseFailure") == ["mcp__.*mampu-tech-team__.*"], refused_groups)

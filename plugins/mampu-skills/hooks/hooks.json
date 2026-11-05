@@ -1,5 +1,5 @@
 {
-  "description": "AI-native work loop: surfaces the team task, records and help pages for each prompt, tracks PR/promote milestones and changes (project files, commits, client changes in Sapot Chat), holds the session for a task and its close-out, and runs the background records review.",
+  "description": "AI-native work loop: surfaces the team task, records and help pages for each prompt, tracks PR/promote milestones and changes (project files, commits, client changes in Sapot Chat), holds the session for a task and its close-out, runs the background records review, and asks before a batch of flow tests at DeepSeek peak price.",
   "hooks": {
     "SessionStart": [
       {
@@ -13,6 +13,14 @@
       {
         "hooks": [
           { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" prompt_match.sh", "timeout": 10 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*__test_flow",
+        "hooks": [
+          { "type": "command", "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run.sh\" peak_test_guard.sh", "timeout": 10 }
         ]
       }
     ],
