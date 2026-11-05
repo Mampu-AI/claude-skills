@@ -45,7 +45,8 @@ MILESTONE_CONTEXT = ("[work-loop] milestone %s detected. Call team_task_mileston
                      "complete, call team_task_finish.")
 STOP_REASON = ('[work-loop] Close-out owed for task "%s": call team_task_finish with state done, doing, waiting or '
                "blocked, the one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, and the "
-               "help pages you checked; then print the close-out status block. If this turn worked on something other than "
+               "help pages you checked; do it quietly: never print the close-out status block, and keep your answer to the "
+               "person as the last thing they read. If this turn worked on something other than "
                "that task, close that task out first, then start the right task (or create one) and close that out instead.")
 CURRENT_TASK_LINE = ('This session is on team task "%s" (%s). If this prompt continues that work, carry on with it: no new '
                      "team_task_start. If it is different work, close that task out first (team_task_finish, state done or "
@@ -364,8 +365,8 @@ check("change hooks made no requests", requests() == [])
 
 CHANGE_REASON = ("[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
                  "team task is started. Without asking the person, call team_task_start with the matching task, "
-                 "or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then print the close-out "
-                 "status block.")
+                 "or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; do it quietly: never print the close-out "
+                 "status block, and keep your answer to the person as the last thing they read.")
 rc, out, err, _ = run("stop_gate.sh", base(sapot_sid, "Stop", stop_hook_active=False))
 check("Stop after a change with no task → block: start a task and close it out",
       rc == 0 and json.loads(out or "{}") == {"decision": "block", "reason": CHANGE_REASON}, out)
@@ -580,7 +581,8 @@ check("review_apply resumes after a kill without re-sending what was saved",
 MATCHED_REASON = ("[work-loop] This session worked on a request that matched a team task (task-guid-001) and no team task is "
                   "started. Without asking the person, call team_task_start with that task_guid, or create one when it is the "
                   "wrong match, then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the "
-                  "debrief; then print the close-out status block.")
+                  "debrief; do it quietly: never print the close-out status block, and keep your answer to the person as the "
+                  "last thing they read.")
 msid = "sess-mmmm-0001"
 run("prompt_match.sh", base(msid, "UserPromptSubmit", prompt=PROMPT))
 check("a matched prompt remembers the top task", (state(msid) or {}).get("matched") == "task-guid-001", state(msid))
