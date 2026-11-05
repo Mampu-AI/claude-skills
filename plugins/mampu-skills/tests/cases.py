@@ -1006,6 +1006,7 @@ check("the person sees why Claude is asking",
       json.loads(out).get("systemMessage") == "Work loop: DeepSeek charges double until 12:00 MYT. Claude will ask before running more flow tests.", out)
 rc, out, err, _ = flow_test("sess-peak-0003", peak + 10)
 check("a test in the same burst (within 20 s of the hold) is held back too", decision(out)[0] == "deny", out)
+check("the person sees the notice once per hold, not once per held test", "systemMessage" not in json.loads(out), out)
 outs = [flow_test("sess-peak-0003", peak + 90 + i) for i in range(20)]
 check("after the person answers, the rest of the session's tests run until the window ends", all(out == "" for _, out, _, _ in outs), outs[0])
 check("the guard sent nothing to the server", requests() == [])

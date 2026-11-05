@@ -29,7 +29,9 @@ held_at=""; held_end=""
 [ -f "$asked" ] && read -r held_at held_end < "$asked" 2>/dev/null
 if [ "$held_end" = "$window_end" ] && [ -n "$held_at" ]; then
   [ $(( now - held_at )) -le 20 ] || exit 0   # the person already answered for this window
+  first=""                                    # same burst: hold it too, but the person saw the notice already
 else
+  first=1
   echo "$now" >> "$log"
   recent=0
   while read -r t; do [ $(( now - t )) -lt 900 ] 2>/dev/null && recent=$((recent + 1)); done < "$log"
@@ -41,5 +43,9 @@ clock=$(printf '%02d:%02d' $(( myt / 3600 )) $(( myt % 3600 / 60 )))
 until_myt=$(printf '%02d:00' $(( (ends + 8) % 24 )))
 reason="[work-loop] DeepSeek peak price: it is $clock MYT and DeepSeek charges double until $until_myt MYT. This flow test is the fourth or later in 15 minutes, so it was held back once (with the rest of this batch). Do not retry yet. Ask the person in one line: run these tests now at double price, or wait until $until_myt MYT (off-peak is 12:00-14:00 and after 18:00 MYT). If they say run now, call test_flow again with the same input; this session's tests then run without asking until $until_myt MYT. If they say wait, stop and tell them when to run them."
 notice="Work loop: DeepSeek charges double until $until_myt MYT. Claude will ask before running more flow tests."
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"},"systemMessage":"%s"}\n' "$reason" "$notice"
+if [ -n "$first" ]; then
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"},"systemMessage":"%s"}\n' "$reason" "$notice"
+else
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+fi
 exit 0
