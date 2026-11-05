@@ -16,7 +16,9 @@ The tools come with this plugin's `mampu-tech-team` server: `team_work_guide`, `
 
 ## The status block
 
-Open the reply that starts work with these four lines, and close out with them again. Fixed vocabulary: found / not found / created / updated / unchanged / done / doing / waiting / blocked. The server renders the lines (`block_line`, `block`); print them, never skip them, even when all four are none.
+Open the reply that starts work with these four lines. Fixed vocabulary: found / not found / created / updated / unchanged / done / doing / waiting / blocked. The server renders the opening lines (`block_line`); print them, never skip them, even when all four are none.
+
+The close-out runs behind the scenes: call `team_task_finish`, but never print its `block`, and never send a separate final message for it. The person reads the last message as the answer, so your answer stays last. At most, mention the task's new state in a few words inside that answer.
 
 ```
 Task:      <title> — found, open → marked doing | not found → created "<title>", doing | <title> — done, completed | … doing, note left | … waiting: <who, for what> | … blocked: <why>

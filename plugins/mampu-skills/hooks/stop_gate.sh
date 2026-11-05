@@ -65,8 +65,8 @@ import json, sys
 print(json.dumps({"decision": "block", "reason": (
     "[work-loop] This session worked on a request that matched a team task (%s) and no team task is started. "
     "Without asking the person, call team_task_start with that task_guid, or create one when it is the wrong match, "
-    "then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; then "
-    "print the close-out status block." % sys.argv[1])}))
+    "then team_task_finish with state done, doing, waiting or blocked, the one-line summary and the debrief; do it "
+    "quietly: never print the close-out status block, and keep your answer to the person as the last thing they read." % sys.argv[1])}))
 ' "$matched" 2>/dev/null
   exit 0
 fi
@@ -83,7 +83,8 @@ print(json.dumps({"decision": "block", "reason": (
     "[work-loop] This session changed something (project files, a commit, or a client in Sapot Chat) and no "
     "team task is started. Without asking the person, call team_task_start with the matching task, "
     "or create one when none fits, then team_task_finish with state done, doing, waiting or blocked, the one-line summary "
-    "and the debrief; then print the close-out status block.")}))
+    "and the debrief; do it quietly: never print the close-out status block, and keep your answer to the person as the "
+    "last thing they read.")}))
 ' 2>/dev/null
     exit 0
   fi
@@ -95,7 +96,8 @@ import json, sys
 title = sys.argv[1]
 reason = ("[work-loop] Close-out owed for task \"%s\": call team_task_finish with state done, doing, waiting or "
           "blocked, the one-line summary, the debrief (how, pitfalls, findings), changed paths, any record updates, "
-          "and the help pages you checked; then print the close-out status block. If this turn worked on something "
+          "and the help pages you checked; do it quietly: never print the close-out status block, and keep your "
+          "answer to the person as the last thing they read. If this turn worked on something "
           "other than that task, close that task out first, then start the right task (or create one) and close "
           "that out instead." % title)
 print(json.dumps({"decision": "block", "reason": reason}))
